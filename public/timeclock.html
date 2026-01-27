@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>E-Bucks Timeclock</title>
+    <script src="https://unpkg.com/react@18/umd/react.development.js" crossorigin></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js" crossorigin></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>body { background-color: #0f172a; }</style>
+</head>
+<body class="h-screen w-screen overflow-hidden flex flex-col">
+
+    <a href="/" class="fixed top-6 left-6 text-slate-500 hover:text-white text-xl z-50">🏠 Dashboard</a>
+
+    <div id="root" class="flex-1 flex flex-col items-center justify-center"></div>
+
+    <script type="text/babel">
+        const { useState } = React;
+
+        function Timeclock() {
+            const [pin, setPin] = useState("");
+            const [status, setStatus] = useState("IDLE"); // IDLE, LOADING, SUCCESS, ERROR
+            const [message, setMessage] = useState("");
+            const [userData, setUserData] = useState(null);
+
+            const handleNum = (num) => {
+                if(status === 'SUCCESS' || status === 'ERROR') reset();
+                if(pin.length < 4) setPin(prev => prev + num);
+            };
+
+            const handleClear = () => setPin("");
+            
+            const reset = () => {
+                setStatus("IDLE");
+                setPin("");
+                setMessage("");
+                setUserData(null);
+            };
+
+            const handleSubmit = async () => {
+                if(pin.length !== 4) return;
+                setStatus("LOADING");
+                
+                try {
+                    const res = await fetch('/api/clock', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ pin })
+                    });
+                    const data = await res.json();
+
+                    if(data.success) {
+                        setStatus("SUCCESS");
+                        setUserData(data);
+                        // Auto reset after 3 seconds
+                        setTimeout(reset, 3000);
+                    } else {
+                        setStatus("ERROR");
+                        setMessage(data.error || "Invalid PIN");
+                        setTimeout(reset, 2000);
+                    }
+                } catch (e) {
+                    setStatus("ERROR");
+                    setMessage("Server Offline");
+                }
+            };
+
+            return (
+                <div class="flex flex-col items-center">
+                    
+                    {/* DISPLAY SCREEN */}
+                    <div className="mb-8 w-96 text-center">
+                        {status === 'IDLE' && (
+                            <div>
+                                <h1 className="text-4xl font-black text-white mb-2 tracking-tight">TIMECLOCK</h1>
+                                <p className="text-slate-500">Enter your 4-digit PIN</p>
+                            </div>
+                        )}
+                        {status === 'LOADING' && <div className="text-blue-500 text-2xl animate-pulse font-mono">AUTHENTICATING...</div>}
+                        
+                        {status === 'ERROR' && (
+                            <div className="animate-bounce">
+                                <div className="text-red-500 text-4xl font-black mb-2">❌ ERROR</div>
+                                <div className="text-slate-400">{message}</div>
+                            </div>
+                        )}
+
+                        {status === 'SUCCESS' && userData && (
+                            <div className="bg-slate-800 p-6 rounded-2xl border border-green-500 shadow-[0_0_50px_rgba(34,197,94,0.2)]">
+                                <h2 className="text-3xl font-bold text-white mb-1">{userData.action === "IN" ? "👋 WELCOME" : "👋 GOODBYE"}</h2>
+                                <div className="text-xl text-blue-400 font-bold mb-4">{userData.user}</div>
+                                {userData.action === "OUT" && (
+                                    <div className="bg-slate-900 p-3 rounded border border-slate-700">
+                                        <div className="text-slate-500 text-xs uppercase tracking-widest">Session Duration</div>
+                                        <div className="text-3xl font-mono text-green-400">{userData.hours} <span className="text-sm">HRS</span></div>
+                                    </div>
+                                )}
+                                <div className="mt-4 text-slate-500 text-sm">Recorded: {new Date().toLocaleTimeString()}</div>
+                            </div>
+                        )}
+                    </div>
+
+                    {/* PIN DOTS */}
+                    {status === 'IDLE' && (
+                        <div className="flex gap-4 mb-8">
+                            {[0,1,2,3].map(i => (
+                                <div key={i} className={`w-4 h-4 rounded-full transition-all duration-300 ${i < pin.length ? 'bg-blue-500 scale-125 shadow-[0_0_10px_#3b82f6]' : 'bg-slate-800'}`}></div>
+                            ))}
+                        </div>
+                    )}
+
+                    {/* NUMPAD */}
+                    {status === 'IDLE' && (
+                        <div className="grid grid-cols-3 gap-4 w-80">
+                            {[1,2,3,4,5,6,7,8,9].map(num => (
+                                <button key={num} onClick={() => handleNum(num)} className="h-20 bg-slate-800 hover:bg-slate-700 active:scale-95 text-white text-2xl font-bold rounded-xl border border-slate-700 shadow-lg transition-all">
+                                    {num}
+                                </button>
+                            ))}
+                            <button onClick={handleClear} className="h-20 bg-red-900/20 hover:bg-red-900/40 text-red-500 font-bold rounded-xl border border-red-900/50">CLR</button>
+                            <button onClick={() => handleNum(0)} className="h-20 bg-slate-800 hover:bg-slate-700 text-white text-2xl font-bold rounded-xl border border-slate-700">0</button>
+                            <button onClick={handleSubmit} className="h-20 bg-blue-600 hover:bg-blue-500 text-white text-2xl font-bold rounded-xl shadow-[0_0_20px_rgba(37,99,235,0.3)]">➜</button>
+                        </div>
+                    )}
+                </div>
+            );
+        }
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<Timeclock />);
+    </script>
+</body>
+</html>

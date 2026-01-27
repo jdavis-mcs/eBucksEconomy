@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>E-Bucks OS</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { background-color: #0f172a; }
+        .card { transition: all 0.2s; }
+        .card:hover { transform: translateY(-5px); border-color: #3b82f6; }
+    </style>
+</head>
+<body class="h-screen w-screen flex flex-col items-center justify-center text-slate-300">
+
+    <div class="mb-12 text-center animate-fade-in">
+        <h1 class="text-6xl font-black text-white tracking-tighter mb-2">E-BUCKS <span class="text-red-500">OS</span></h1>
+        <p class="text-slate-500 tracking-[0.5em] text-sm uppercase">System V2.0</p>
+    </div>
+
+    <div class="grid grid-cols-2 gap-8 max-w-4xl w-full px-6">
+        
+        <a href="store.html" class="card bg-slate-900 border border-slate-800 p-12 rounded-3xl flex flex-col items-center justify-center shadow-2xl group cursor-pointer hover:bg-slate-800">
+            <div class="text-6xl mb-6 text-blue-500 group-hover:scale-110 transition-transform">🛒</div>
+            <h2 class="text-3xl font-bold text-white mb-2">Store</h2>
+            <p class="text-slate-500">Shop Items</p>
+        </a>
+
+        <a href="admin.html" class="card bg-slate-900 border border-slate-800 p-12 rounded-3xl flex flex-col items-center justify-center shadow-2xl group cursor-pointer hover:bg-slate-800">
+            <div class="text-6xl mb-6 text-purple-500 group-hover:scale-110 transition-transform">⚙️</div>
+            <h2 class="text-3xl font-bold text-white mb-2">Command</h2>
+            <p class="text-slate-500">Admin Panel</p>
+        </a>
+
+        <a href="timeclock.html" class="card bg-slate-900 border border-slate-800 p-12 rounded-3xl flex flex-col items-center justify-center shadow-2xl group cursor-pointer hover:bg-slate-800">
+            <div class="text-6xl mb-6 text-green-500 group-hover:scale-110 transition-transform">⏰</div>
+            <h2 class="text-3xl font-bold text-white mb-2">Timeclock</h2>
+            <p class="text-slate-500">Payroll</p>
+        </a>
+
+        <a href="stats.html" class="card bg-slate-900 border border-slate-800 p-12 rounded-3xl flex flex-col items-center justify-center shadow-2xl group cursor-pointer hover:bg-slate-800">
+            <div class="text-6xl mb-6 text-pink-500 group-hover:scale-110 transition-transform">📈</div>
+            <h2 class="text-3xl font-bold text-white mb-2">Stats</h2>
+            <p class="text-slate-500">Economy Data</p>
+        </a>
+
+    </div>
+
+    <div class="fixed bottom-6 flex items-center gap-2">
+        <div class="w-2 h-2 rounded-full bg-green-500 animate-pulse"></div>
+        <span class="text-xs font-mono text-slate-600">SERVER CONNECTED</span>
+    </div>
+
+</body>
+</html>

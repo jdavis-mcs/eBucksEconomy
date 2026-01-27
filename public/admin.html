@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>E-Bucks Command</title>
+    <script src="https://unpkg.com/react@18/umd/react.development.js" crossorigin></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js" crossorigin></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { background-color: #0f172a; }
+        .tab-active { background-color: #2563eb; color: white; border-color: #2563eb; }
+        .tab-inactive { background-color: #1e293b; color: #94a3b8; border-color: #334155; }
+    </style>
+</head>
+<body class="text-slate-300 h-screen w-screen overflow-hidden flex flex-col">
+
+    <a href="/" class="fixed top-4 left-4 z-50 bg-slate-800 text-white p-2 rounded-lg shadow-xl hover:bg-slate-700 border border-slate-700 text-xl">🏠</a>
+
+    <div id="root" class="flex-1 flex flex-col h-full"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect } = React;
+
+        function AdminApp() {
+            // AUTH
+            const [currentUser, setCurrentUser] = useState(null);
+            const [pinInput, setPinInput] = useState("");
+            
+            // DATA & TABS
+            const [activeTab, setActiveTab] = useState('inventory');
+            const [users, setUsers] = useState([]);
+            const [inventory, setInventory] = useState([]);
+            const [printers, setPrinters] = useState([]);
+            const [unpaidSheets, setUnpaidSheets] = useState([]);
+            const [financials, setFinancials] = useState([]);
+            const [selectedStudent, setSelectedStudent] = useState(null);
+
+            // FORMS
+            const [newUser, setNewUser] = useState({ name: '', role: 'Employee', pin: '', hourly_rate: 15.00 });
+            const [newItem, setNewItem] = useState({ name: '', price: '', stock: '', barcode: '' });
+            const [newPrinter, setNewPrinter] = useState({ name: '', ip_address: '', assignment: 'NONE' });
+            const [mintAmount, setMintAmount] = useState('');
+            const [mintUser, setMintUser] = useState('');
+
+            useEffect(() => {
+                if(currentUser) {
+                    fetchUsers(); fetchInventory();
+                    if(currentUser.role === 'Admin') { 
+                        fetchPrinters(); 
+                        fetchPayroll(); 
+                        fetchFinancials();
+                        setActiveTab('users'); 
+                    }
+                }
+            }, [currentUser]);
+
+            const fetchUsers = () => fetch('/api/users').then(r=>r.json()).then(setUsers);
+            const fetchInventory = () => fetch('/api/inventory').then(r=>r.json()).then(setInventory);
+            const fetchPrinters = () => fetch('/api/printers').then(r=>r.json()).then(setPrinters);
+            const fetchPayroll = () => fetch('/api/payroll/unpaid').then(r=>r.json()).then(setUnpaidSheets);
+            const fetchFinancials = () => fetch('/api/financials').then(r=>r.json()).then(setFinancials);
+
+            const handleLogin = async (e) => {
+                e.preventDefault();
+                const res = await fetch('/api/login', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({pin: pinInput}) });
+                const data = await res.json();
+                if(data.success && data.user.role !== 'Employee') setCurrentUser(data.user);
+                else alert("Access Denied");
+            };
+
+            // CRUD
+            const addUser = async (e) => { e.preventDefault(); await fetch('/api/users', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(newUser)}); fetchUsers(); };
+            const addItem = async (e) => { e.preventDefault(); await fetch('/api/inventory', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(newItem)}); fetchInventory(); };
+            const addPrinter = async (e) => { e.preventDefault(); await fetch('/api/printers', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(newPrinter)}); fetchPrinters(); };
+            const deletePrinter = async (id) => { if(confirm("Delete printer?")) { await fetch(`/api/printers/${id}`, {method:'DELETE'}); fetchPrinters(); } };
+            const testPrinter = async (ip) => { await fetch('/api/printers/test', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ip})}); };
+            
+            const mintVoucher = async (e) => { e.preventDefault(); await fetch('/api/mint', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({amount:parseFloat(mintAmount), userId: mintUser||null})}); alert("Minted!"); };
+            const processPayroll = async () => { if(confirm("Print Checks?")) { await fetch('/api/payroll/process', {method:'POST'}); fetchPayroll(); }};
+
+            // MODAL
+            const StudentModal = ({ s, onClose }) => {
+                const [d, setD] = useState(null);
+                useEffect(() => { fetch(`/api/users/${s.id}/details`).then(r=>r.json()).then(setD); }, [s]);
+                if(!d) return <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 text-white">Loading...</div>;
+                return (
+                    <div className="fixed inset-0 bg-black/90 z-50 flex items-center justify-center p-4">
+                        <div className="bg-slate-900 border border-slate-700 w-full max-w-3xl h-[80vh] rounded-2xl flex flex-col relative p-6">
+                            <button onClick={onClose} className="absolute top-4 right-4 text-white text-2xl">×</button>
+                            <h2 className="text-3xl font-black text-white mb-2">{s.name} <span className="text-sm font-normal text-slate-400">Balance: ${d.balance.toFixed(2)}</span></h2>
+                            <div className="flex-1 overflow-y-auto grid grid-cols-2 gap-4">
+                                <div><h3 className="font-bold text-slate-500 text-xs mb-2">VOUCHERS</h3>{d.activeVouchers.map(v=><div key={v.id} className="bg-slate-800 p-2 mb-1 rounded text-green-400 font-mono flex justify-between"><span>{v.id}</span><span>${v.amount}</span></div>)}</div>
+                                <div><h3 className="font-bold text-slate-500 text-xs mb-2">TIMECARDS</h3>{d.timesheets.map(t=><div key={t.id} className="bg-slate-800 p-2 mb-1 rounded text-xs flex justify-between"><span className="text-slate-400">{new Date(t.clock_in).toLocaleDateString()}</span><span className={t.is_paid?'text-green-500':'text-yellow-500'}>{t.total_hours?.toFixed(2)||'Active'}h</span></div>)}</div>
+                            </div>
+                        </div>
+                    </div>
+                );
+            };
+
+            if (!currentUser) return (
+                <div className="h-full flex items-center justify-center bg-slate-900">
+                    <div className="bg-slate-800 p-10 rounded-2xl shadow-2xl max-w-md w-full">
+                        <h1 className="text-3xl font-black text-center text-white mb-6">LOGIN</h1>
+                        <form onSubmit={handleLogin}><input type="password" value={pinInput} onChange={e=>setPinInput(e.target.value)} className="w-full bg-slate-900 border-2 border-slate-700 text-white text-center text-4xl p-4 rounded-xl mb-4" autoFocus /><button className="w-full bg-blue-600 text-white font-bold py-4 rounded-xl">ENTER</button></form>
+                    </div>
+                </div>
+            );
+
+            return (
+                <div className="flex flex-col h-full max-w-6xl mx-auto w-full p-6">
+                    {selectedStudent && <StudentModal s={selectedStudent} onClose={()=>setSelectedStudent(null)} />}
+                    
+                    <div className="flex items-center justify-between mb-8">
+                        <h1 className="text-4xl font-black text-white">COMMAND CENTER</h1>
+                        <button onClick={()=>setCurrentUser(null)} className="text-red-400 font-bold">Logout</button>
+                    </div>
+
+                    <div className="flex gap-4 mb-6 overflow-x-auto pb-2">
+                        <button onClick={()=>setActiveTab('users')} className={`px-6 py-2 rounded-full font-bold whitespace-nowrap ${activeTab==='users'?'tab-active':'tab-inactive'}`}>Users</button>
+                        <button onClick={()=>setActiveTab('inventory')} className={`px-6 py-2 rounded-full font-bold whitespace-nowrap ${activeTab==='inventory'?'tab-active':'tab-inactive'}`}>Inventory</button>
+                        {currentUser.role==='Admin' && <>
+                            <button onClick={()=>setActiveTab('payroll')} className={`px-6 py-2 rounded-full font-bold whitespace-nowrap ${activeTab==='payroll'?'tab-active':'tab-inactive'}`}>Payroll</button>
+                            <button onClick={()=>setActiveTab('financials')} className={`px-6 py-2 rounded-full font-bold whitespace-nowrap ${activeTab==='financials'?'tab-active':'tab-inactive'}`}>💰 Financials</button>
+                            <button onClick={()=>setActiveTab('bank')} className={`px-6 py-2 rounded-full font-bold whitespace-nowrap ${activeTab==='bank'?'tab-active':'tab-inactive'}`}>Bank</button>
+                            <button onClick={()=>setActiveTab('printers')} className={`px-6 py-2 rounded-full font-bold whitespace-nowrap ${activeTab==='printers'?'tab-active':'tab-inactive'}`}>🖨️ Printers</button>
+                        </>}
+                    </div>
+
+                    <div className="flex-1 bg-slate-900 border border-slate-800 rounded-2xl p-6 overflow-hidden flex flex-col">
+                        
+                        {/* USERS */}
+                        {activeTab==='users' && <div className="h-full flex flex-col">
+                            {currentUser.role==='Admin'&&<form onSubmit={addUser} className="bg-slate-800 p-4 rounded mb-4 flex gap-2"><input placeholder="Name" value={newUser.name} onChange={e=>setNewUser({...newUser,name:e.target.value})} className="bg-slate-900 text-white p-2 rounded flex-1"/><select value={newUser.role} onChange={e=>setNewUser({...newUser,role:e.target.value})} className="bg-slate-900 text-white p-2 rounded"><option>Employee</option><option>Manager</option><option>Admin</option></select><input placeholder="PIN" value={newUser.pin} onChange={e=>setNewUser({...newUser,pin:e.target.value})} className="bg-slate-900 text-white p-2 rounded w-24"/><input placeholder="Rate" value={newUser.hourly_rate} onChange={e=>setNewUser({...newUser,hourly_rate:e.target.value})} className="bg-slate-900 text-white p-2 rounded w-20"/><button className="bg-blue-600 px-4 rounded text-white">Add</button></form>}
+                            <div className="flex-1 overflow-y-auto"><table className="w-full text-left text-sm text-slate-400"><thead className="bg-slate-950 text-slate-500"><tr><th className="p-3">Name</th><th>Role</th><th>Rate</th></tr></thead><tbody>{users.map(u=><tr key={u.id} className="border-b border-slate-800 hover:bg-slate-800 cursor-pointer" onClick={()=>setSelectedStudent(u)}><td className="p-3 font-bold text-white">{u.name}</td><td>{u.role}</td><td>${u.hourly_rate}</td></tr>)}</tbody></table></div>
+                        </div>}
+
+                        {/* INVENTORY */}
+                        {activeTab==='inventory' && <div className="h-full flex flex-col">
+                            <form onSubmit={addItem} className="bg-slate-800 p-4 rounded mb-4 flex gap-2"><input placeholder="Item" value={newItem.name} onChange={e=>setNewItem({...newItem,name:e.target.value})} className="bg-slate-900 text-white p-2 rounded flex-1"/><input placeholder="Price" value={newItem.price} onChange={e=>setNewItem({...newItem,price:e.target.value})} className="bg-slate-900 text-white p-2 rounded w-24"/><input placeholder="Stock" value={newItem.stock} onChange={e=>setNewItem({...newItem,stock:e.target.value})} className="bg-slate-900 text-white p-2 rounded w-24"/><button className="bg-blue-600 px-4 rounded text-white">Add</button></form>
+                            <div className="flex-1 overflow-y-auto"><table className="w-full text-left text-sm text-slate-400"><thead className="bg-slate-950 text-slate-500"><tr><th className="p-3">Item</th><th>Price</th><th>Stock</th></tr></thead><tbody>{inventory.map(i=><tr key={i.id} className="border-b border-slate-800"><td className="p-3 text-white">{i.name}</td><td className="text-green-400">${i.price}</td><td>{i.stock}</td></tr>)}</tbody></table></div>
+                        </div>}
+
+                        {/* PAYROLL */}
+                        {activeTab==='payroll' && <div className="h-full flex flex-col">
+                             <div className="flex justify-between mb-4"><h2 className="font-bold text-white">Unpaid Shifts</h2><button onClick={processPayroll} className="bg-green-600 text-white px-4 py-2 rounded font-bold">Process Payroll</button></div>
+                             <div className="flex-1 overflow-y-auto">{unpaidSheets.map(s=><div key={s.id} className="flex justify-between p-3 border-b border-slate-800"><span>{s.name}</span><span className="text-green-400 font-mono">${(s.total_hours*s.hourly_rate).toFixed(2)}</span></div>)}</div>
+                        </div>}
+
+                        {/* NEW: FINANCIALS */}
+                        {activeTab==='financials' && <div className="h-full flex flex-col">
+                             <h2 className="font-bold text-white mb-4">Store Transactions</h2>
+                             <div className="flex-1 overflow-y-auto">
+                                <table className="w-full text-left text-sm text-slate-400">
+                                    <thead className="bg-slate-950 text-slate-500">
+                                        <tr><th className="p-3">Time</th><th>Items</th><th className="text-right">Total</th></tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-slate-800">
+                                        {financials.map(f=>(
+                                            <tr key={f.id} className="hover:bg-slate-800/50">
+                                                <td className="p-3 text-white font-mono text-xs">{new Date(f.created_at).toLocaleString()}</td>
+                                                <td>{f.items.join(', ')}</td>
+                                                <td className="text-right text-green-400 font-bold pr-3">${f.total_cost.toFixed(2)}</td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                             </div>
+                        </div>}
+
+                        {/* BANK */}
+                        {activeTab==='bank' && <div className="flex flex-col items-center justify-center h-full"><div className="bg-slate-800 p-8 rounded max-w-md w-full"><h2 className="text-white font-bold mb-4">Mint Money</h2><form onSubmit={mintVoucher} className="flex flex-col gap-4"><select value={mintUser} onChange={e=>setMintUser(e.target.value)} className="bg-slate-900 text-white p-3 rounded"><option value="">-- Cash --</option>{users.map(u=><option key={u.id} value={u.id}>{u.name}</option>)}</select><input type="number" value={mintAmount} onChange={e=>setMintAmount(e.target.value)} className="bg-slate-900 text-white p-3 rounded" placeholder="0.00"/><button className="bg-green-600 text-white font-bold p-3 rounded">PRINT</button></form></div></div>}
+
+                        {/* PRINTERS */}
+                        {activeTab==='printers' && <div className="h-full flex flex-col">
+                            <form onSubmit={addPrinter} className="bg-slate-800 p-4 rounded mb-4 flex gap-2 items-end">
+                                <div className="flex-1"><label className="text-xs font-bold text-slate-500">Name</label><input placeholder="e.g. Front Counter" value={newPrinter.name} onChange={e=>setNewPrinter({...newPrinter,name:e.target.value})} className="w-full bg-slate-900 text-white p-2 rounded"/></div>
+                                <div className="w-40"><label className="text-xs font-bold text-slate-500">IP Address</label><input placeholder="192.168.1.xxx" value={newPrinter.ip_address} onChange={e=>setNewPrinter({...newPrinter,ip_address:e.target.value})} className="w-full bg-slate-900 text-white p-2 rounded"/></div>
+                                <div className="w-32"><label className="text-xs font-bold text-slate-500">Role</label><select value={newPrinter.assignment} onChange={e=>setNewPrinter({...newPrinter,assignment:e.target.value})} className="w-full bg-slate-900 text-white p-2 rounded"><option value="NONE">None</option><option value="POS">POS (Store)</option><option value="PAYROLL">Payroll (Office)</option></select></div>
+                                <button className="bg-blue-600 px-4 py-2 rounded text-white font-bold h-10">Add</button>
+                            </form>
+                            <div className="flex-1 overflow-y-auto"><table className="w-full text-left text-sm"><thead className="bg-slate-950 text-slate-500 uppercase text-xs"><tr><th className="p-3">Printer Name</th><th>IP Address</th><th>Assignment</th><th>Actions</th></tr></thead><tbody className="divide-y divide-slate-800">{printers.map(p => (<tr key={p.id} className="hover:bg-slate-800/50"><td className="p-3 font-bold text-white">{p.name}</td><td className="font-mono text-slate-400">{p.ip_address}</td><td><span className={`text-xs font-bold px-2 py-1 rounded ${p.assignment==='POS'?'bg-blue-900 text-blue-200':p.assignment==='PAYROLL'?'bg-green-900 text-green-200':'bg-slate-700'}`}>{p.assignment}</span></td><td className="flex gap-2 p-2"><button onClick={()=>testPrinter(p.ip_address)} className="text-xs bg-slate-700 hover:bg-slate-600 px-2 py-1 rounded text-white">Test</button><button onClick={()=>deletePrinter(p.id)} className="text-xs text-red-500 hover:underline">Remove</button></td></tr>))}</tbody></table></div>
+                        </div>}
+
+                    </div>
+                </div>
+            );
+        }
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<AdminApp />);
+    </script>
+</body>
+</html>

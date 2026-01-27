@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Economy Analytics</title>
+    <script src="https://unpkg.com/react@18/umd/react.development.js" crossorigin></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js" crossorigin></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>body { background-color: #0f172a; }</style>
+</head>
+<body class="h-screen w-screen overflow-hidden flex flex-col text-slate-300">
+
+    <div class="p-6 flex items-center justify-between bg-slate-900 border-b border-slate-800">
+        <div class="flex items-center gap-4">
+            <a href="/" class="text-2xl hover:scale-110 transition-transform">🏠</a>
+            <h1 class="text-2xl font-black text-white tracking-wider">ECONOMY <span class="text-pink-500">STATS</span></h1>
+        </div>
+        <div class="flex items-center gap-2">
+            <div class="w-2 h-2 rounded-full bg-green-500 animate-pulse"></div>
+            <span class="text-xs font-mono text-green-500">LIVE DATA</span>
+        </div>
+    </div>
+
+    <div id="root" class="flex-1 overflow-y-auto p-8"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect, useRef } = React;
+
+        function StatCard({ title, value, sub, color }) {
+            return (
+                <div className={`bg-slate-800 p-6 rounded-2xl border-l-4 ${color} shadow-lg`}>
+                    <h3 className="text-slate-500 text-sm font-bold uppercase tracking-widest mb-1">{title}</h3>
+                    <div className="text-4xl font-black text-white mb-1">{value}</div>
+                    <div className="text-slate-400 text-xs">{sub}</div>
+                </div>
+            );
+        }
+
+        function StatsApp() {
+            const [data, setData] = useState(null);
+            const chartRef = useRef(null);
+            const canvasRef = useRef(null);
+
+            useEffect(() => {
+                fetch('/api/stats')
+                    .then(r => r.json())
+                    .then(d => {
+                        setData(d);
+                        renderChart(d.topItems);
+                    });
+            }, []);
+
+            const renderChart = (items) => {
+                if(chartRef.current) chartRef.current.destroy();
+                const ctx = canvasRef.current.getContext('2d');
+                
+                chartRef.current = new Chart(ctx, {
+                    type: 'bar',
+                    data: {
+                        labels: items.map(i => i.item_name),
+                        datasets: [{
+                            label: 'Units Sold',
+                            data: items.map(i => i.count),
+                            backgroundColor: ['#ec4899', '#8b5cf6', '#3b82f6', '#10b981', '#f59e0b'],
+                            borderRadius: 6,
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        plugins: { legend: { display: false } },
+                        scales: {
+                            y: { beginAtZero: true, grid: { color: '#334155' } },
+                            x: { grid: { display: false } }
+                        }
+                    }
+                });
+            };
+
+            if (!data) return <div className="flex h-full items-center justify-center text-xl animate-pulse">Analyzing Economy...</div>;
+
+            return (
+                <div className="max-w-6xl mx-auto space-y-8">
+                    
+                    {/* KEY METRICS */}
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                        <StatCard 
+                            title="Total Circulation" 
+                            value={`$${data.circulation.toFixed(2)}`} 
+                            sub="Active Cash in Student Hands"
+                            color="border-green-500"
+                        />
+                        <StatCard 
+                            title="GDP / Capita" 
+                            value={`$${data.avgPerPerson.toFixed(2)}`} 
+                            sub={`Across ${data.userCount} Citizens`}
+                            color="border-blue-500"
+                        />
+                        <StatCard 
+                            title="Lifetime Sales" 
+                            value={`$${data.lifetimeRevenue.toFixed(2)}`} 
+                            sub="Total Store Revenue"
+                            color="border-purple-500"
+                        />
+                    </div>
+
+                    {/* CHARTS ROW */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-8 h-96">
+                        
+                        {/* CHART */}
+                        <div className="bg-slate-800 p-6 rounded-2xl border border-slate-700 flex flex-col">
+                            <h3 className="text-white font-bold mb-4">🏆 Top Selling Items</h3>
+                            <div className="flex-1 relative">
+                                <canvas ref={canvasRef}></canvas>
+                            </div>
+                        </div>
+
+                        {/* LIST */}
+                        <div className="bg-slate-800 p-6 rounded-2xl border border-slate-700 overflow-hidden flex flex-col">
+                            <h3 className="text-white font-bold mb-4">📊 Leaderboard Details</h3>
+                            <div className="flex-1 overflow-y-auto">
+                                <table className="w-full text-left">
+                                    <thead className="text-xs text-slate-500 uppercase border-b border-slate-700">
+                                        <tr><th className="pb-2">Rank</th><th className="pb-2">Item</th><th className="pb-2 text-right">Sold</th></tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-slate-700">
+                                        {data.topItems.map((item, index) => (
+                                            <tr key={index}>
+                                                <td className="py-3 font-mono text-slate-500">#{index + 1}</td>
+                                                <td className="py-3 font-bold text-white">{item.item_name}</td>
+                                                <td className="py-3 text-right text-pink-400 font-bold">{item.count}</td>
+                                            </tr>
+                                        ))}
+                                        {data.topItems.length === 0 && <tr><td colSpan="3" className="py-4 text-center text-slate-500">No sales recorded yet.</td></tr>}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+
+                    </div>
+                </div>
+            );
+        }
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<StatsApp />);
+    </script>
+</body>
+</html>
