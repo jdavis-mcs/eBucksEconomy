@@ -25,6 +25,8 @@ db.serialize(() => {
     db.run(`CREATE TABLE IF NOT EXISTS transactions (id TEXT PRIMARY KEY, total_cost REAL, item_count INTEGER, created_at DATETIME)`);
     db.run(`CREATE TABLE IF NOT EXISTS sales_log (id INTEGER PRIMARY KEY AUTOINCREMENT, transaction_id TEXT, item_name TEXT, price REAL, sold_at DATETIME)`);
     db.run(`CREATE TABLE IF NOT EXISTS printers (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, ip_address TEXT, assignment TEXT)`);
+    db.run(`CREATE TABLE IF NOT EXISTS messages (id INTEGER PRIMARY KEY AUTOINCREMENT, sender_id INTEGER, receiver_id INTEGER, message TEXT, timestamp DATETIME DEFAULT CURRENT_TIMESTAMP)`);
+    db.run(`CREATE TABLE IF NOT EXISTS late_work_tickets (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, assignment_name TEXT, status TEXT DEFAULT 'Pending', created_at DATETIME DEFAULT CURRENT_TIMESTAMP)`);
 
     // Bootstrap Admin
     db.get("SELECT count(*) as count FROM users", (err, row) => {
@@ -158,6 +160,29 @@ app.get('/api/financials', (req, res) => {
         });
     });
 });
+
+// --- ECONOMY STATS ---
+// --- ECONOMY STATS & LATE WORK ---
+app.get('/api/stats', (req, res) => {
+    const stats = {};
+    
+    // 1. Get total vouchers issued and total money issued
+    db.get("SELECT COUNT(*) as count, SUM(amount) as total_money FROM vouchers", [], (err, row) => {
+        stats.totalVouchers = row ? row.count : 0;
+        stats.totalMoney = row && row.total_money ? row.total_money : 0;
+        
+        // 2. Get top selling items
+        db.all("SELECT item_name, COUNT(*) as count FROM sales_log GROUP BY item_name ORDER BY count DESC LIMIT 5", [], (err, rows) => {
+            stats.topItems = rows || [];
+            
+            // 3. Get Pending Late Work count
+            db.get("SELECT COUNT(*) as pending_count FROM late_work_tickets WHERE status = 'Pending'", [], (err, lateRow) => {
+                stats.pendingLateWork = lateRow ? lateRow.pending_count : 0;
+                res.json(stats);
+            });
+        });
+    });
+});
 app.post('/api/login', (req, res) => {
     const { pin } = req.body;
     db.get("SELECT * FROM users WHERE pin = ?", [pin], (err, row) => {
@@ -197,10 +222,142 @@ app.post('/api/clock', (req, res) => {
     });
 });
 
+// --- BANK & TRANSFERS ---
+app.post('/api/transfer', (req, res) => {
+    const { senderId, receiverId, amount } = req.body;
+    const transferAmount = parseFloat(amount);
+    const fee = 5.00;
+    const totalNeeded = transferAmount + fee;
+
+    // Get all active vouchers for the sender
+    db.all("SELECT * FROM vouchers WHERE user_id = ? AND is_used = 0", [senderId], (err, vouchers) => {
+        const totalBalance = vouchers.reduce((sum, v) => sum + v.amount, 0);
+        
+        if (totalBalance < totalNeeded) {
+            return res.status(400).json({error: "Insufficient funds (Transfer Amount + $5.00 Fee)."});
+        }
+
+        // Gather enough vouchers to cover the transfer + fee
+        let sum = 0;
+        let vouchersToUse = [];
+        for (let v of vouchers) {
+            sum += v.amount;
+            vouchersToUse.push(v.id);
+            if (sum >= totalNeeded) break;
+        }
+
+        const change = sum - totalNeeded;
+        const placeholders = vouchersToUse.map(() => '?').join(',');
+
+        // Mark gathered vouchers as used
+        db.run(`UPDATE vouchers SET is_used = 1 WHERE id IN (${placeholders})`, vouchersToUse, () => {
+            
+            const receiverVoucherId = Math.random().toString(36).substring(2, 10).toUpperCase();
+            
+            db.get("SELECT name FROM users WHERE id=?", [receiverId], (err, receiver) => {
+                // Mint transfer amount to receiver
+                db.run("INSERT INTO vouchers (id, amount, user_id) VALUES (?,?,?)", [receiverVoucherId, transferAmount, receiverId]);
+                
+                let printQueue = [];
+                printQueue.push(printer.generateVoucher({id: receiverVoucherId, amount: transferAmount, user_name: receiver ? receiver.name : "BEARER"}));
+
+                // If sender overpaid, mint their change
+                if (change > 0) {
+                    const changeId = Math.random().toString(36).substring(2, 10).toUpperCase();
+                    db.get("SELECT name FROM users WHERE id=?", [senderId], (err, sender) => {
+                        db.run("INSERT INTO vouchers (id, amount, user_id) VALUES (?,?,?)", [changeId, change, senderId]);
+                        printQueue.push(printer.generateVoucher({id: changeId, amount: change, user_name: sender ? sender.name : "BEARER"}));
+                        
+                        res.json({success: true, printWindow: printer.combinePrints(printQueue)});
+                    });
+                } else {
+                    res.json({success: true, printWindow: printer.combinePrints(printQueue)});
+                }
+            });
+        });
+    });
+});
+
+app.post('/api/vouchers/:id/reprint', (req, res) => {
+    const vid = req.params.id;
+    db.get("SELECT v.*, u.name FROM vouchers v LEFT JOIN users u ON v.user_id = u.id WHERE v.id = ?", [vid], (err, v) => {
+        if (!v) return res.status(404).json({error: "Voucher not found"});
+        const raw = printer.generateVoucher({id: v.id, amount: v.amount, user_name: v.name || "BEARER"});
+        res.json({success: true, printWindow: printer.combinePrints([raw])});
+    });
+});
+
+// --- MESSAGING SYSTEM ---
+app.get('/api/messages/:userId', (req, res) => {
+    const userId = parseInt(req.params.userId);
+    db.get("SELECT role FROM users WHERE id=?", [userId], (err, user) => {
+        if (!user) return res.status(401).json({error: "User not found"});
+        
+        // Join to get the sender's name
+        let query = "SELECT m.*, s.name as sender_name FROM messages m LEFT JOIN users s ON m.sender_id = s.id ";
+        let params = [];
+        
+        // If Admin, fetch EVERYTHING. If Employee, only fetch their DMs or Broadcasts (receiver_id = 0)
+        if (user.role !== 'Admin') {
+            query += "WHERE m.sender_id = ? OR m.receiver_id = ? OR m.receiver_id = 0 ";
+            params = [userId, userId];
+        }
+        
+        query += "ORDER BY m.timestamp ASC";
+        
+        db.all(query, params, (err, rows) => res.json(rows || []));
+    });
+});
+
+app.post('/api/messages', (req, res) => {
+    const { sender_id, receiver_id, message } = req.body;
+    db.run("INSERT INTO messages (sender_id, receiver_id, message) VALUES (?, ?, ?)", 
+        [sender_id, receiver_id, message], function(err) {
+        if(err) return res.status(500).json({error: err.message});
+        res.json({success: true});
+    });
+});
+
 // Legacy Printer Routes
 app.get('/api/printers', (req, res) => { res.json([]); });
 app.post('/api/printers', (req, res) => { res.json({success:true}); });
 app.delete('/api/printers/:id', (req, res) => { res.json({success:true}); });
 app.post('/api/printers/test', (req, res) => { res.json({success: true}); });
+
+// --- LATE WORK TICKETS ---
+
+// GET: Fetch all tickets (Admin view)
+app.get('/api/late-work', (req, res) => {
+    // Joins with the users table to get the name of the person who submitted it
+    db.all("SELECT l.*, u.name as user_name FROM late_work_tickets l LEFT JOIN users u ON l.user_id = u.id ORDER BY l.status DESC, l.created_at ASC", (err, rows) => {
+        if(err) return res.status(500).json({error: err.message});
+        res.json(rows || []);
+    });
+});
+
+// POST: Create a new late work ticket
+app.post('/api/late-work', (req, res) => {
+    const { user_id, assignment_name } = req.body;
+    db.run("INSERT INTO late_work_tickets (user_id, assignment_name) VALUES (?, ?)", [user_id, assignment_name], function(err) {
+        if(err) return res.status(500).json({error: err.message});
+        res.json({success: true, id: this.lastID});
+    });
+});
+
+// PUT: Confirm a ticket (Changes status to 'Confirmed')
+app.put('/api/late-work/:id/confirm', (req, res) => {
+    db.run("UPDATE late_work_tickets SET status = 'Confirmed' WHERE id = ?", [req.params.id], (err) => {
+        if(err) return res.status(500).json({error: err.message});
+        res.json({success: true});
+    });
+});
+
+// DELETE: Completely remove a ticket
+app.delete('/api/late-work/:id', (req, res) => {
+    db.run("DELETE FROM late_work_tickets WHERE id = ?", [req.params.id], (err) => {
+        if(err) return res.status(500).json({error: err.message});
+        res.json({success: true});
+    });
+});
 
 app.listen(PORT, () => console.log(`System Online: http://localhost:${PORT}`));
