@@ -1,104 +1,100 @@
-const escpos = require('escpos');
-// We use a try-catch here so the server doesn't crash if the driver is missing
-try {
-    escpos.Network = require('escpos-network');
-} catch (e) {
-    console.warn("⚠️ Hardware Printer Driver not found. Running in simulation mode.");
-}
+// printer.js - HTML Generator Version
 
-function sendToPrinter(ip, callback) {
-    if (!ip || ip === '0.0.0.0' || !escpos.Network) {
-        console.log(`[SIMULATION] Sending print job to Virtual Printer at ${ip || 'Unknown IP'}`);
-        return;
-    }
-
-    try {
-        // 1. Create Device
-        const device = new escpos.Network(ip, 9100);
-        const options = { encoding: "GB18030" };
-        const printer = new escpos.Printer(device, options);
-
-        // 2. Open Connection with Error Handling
-        device.open((error) => {
-            if (error) {
-                console.error(`❌ PRINTER ERROR (${ip}): Could not connect.`);
-                console.error(`   > Hint: Check if printer is on and IP is correct.`);
-                return;
+function wrapHtml(content) {
+    return `
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>Print</title>
+        <style>
+            body { 
+                font-family: 'Courier New', monospace; 
+                width: 300px; /* Standard 80mm thermal width */
+                margin: 0 auto; 
+                color: #000;
+                font-size: 14px;
             }
-            // 3. Run the print job
-            try {
-                callback(printer, device);
-            } catch (err) {
-                console.error("❌ Print Job Failed:", err);
-                device.close();
-            }
-        });
-
-    } catch (e) {
-        console.error("❌ Printer Driver Exception:", e.message);
-    }
+            .bold { font-weight: bold; }
+            .center { text-align: center; }
+            .left { text-align: left; }
+            .right { text-align: right; }
+            .row { display: flex; justify-content: space-between; }
+            .divider { border-top: 1px dashed #000; margin: 10px 0; }
+            /* This ensures the printer cuts or starts a new page between receipts */
+            .cut { page-break-after: always; padding-bottom: 20px; border-bottom: 1px dotted #ccc; margin-bottom: 20px; }
+            img { max-width: 100%; }
+        </style>
+        <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.5/dist/JsBarcode.all.min.js"></script>
+    </head>
+    <body>
+        ${content}
+        <script>
+            // Generate Barcodes
+            try { JsBarcode(".barcode").init(); } catch(e) {}
+            // Auto-print
+            window.onload = function() { window.print(); };
+        </script>
+    </body>
+    </html>
+    `;
 }
 
-function printReceipt(targetIp, cartItems, totalCost) {
-    console.log(`\n🧾 === PRINTING RECEIPT [${targetIp}] ===`);
-    console.log(`TOTAL: $${totalCost.toFixed(2)}`);
-    console.log(`ITEMS: ${cartItems.length}`);
-    console.log(`==========================================\n`);
-    
-    sendToPrinter(targetIp, (printer, device) => {
-        printer
-            .font('a').align('ct').style('b').size(1, 1)
-            .text('E-BUCKS STORE')
-            .text('--------------------------------')
-            .size(0, 0).align('lt');
+function generateReceipt(cartItems, totalCost) {
+    let itemsHtml = cartItems.map(item => `
+        <div class="row">
+            <span>${item.name}</span>
+            <span>$${item.price.toFixed(2)}</span>
+        </div>
+    `).join('');
 
-        cartItems.forEach(item => {
-            printer.text(`${item.name} ... $${item.price.toFixed(2)}`);
-        });
-
-        printer
-            .align('ct').text('--------------------------------')
-            .size(1, 1).text(`TOTAL: $${totalCost.toFixed(2)}`)
-            .feed(1).size(0, 0)
-            .text(`Date: ${new Date().toLocaleDateString()}`)
-            .feed(2).cut().close();
-    });
+    const content = `
+        <div class="cut">
+            <h2 class="center bold">E-BUCKS STORE</h2>
+            <div class="divider"></div>
+            <div class="left">${itemsHtml}</div>
+            <div class="divider"></div>
+            <div class="row bold">
+                <span>TOTAL:</span>
+                <span>$${totalCost.toFixed(2)}</span>
+            </div>
+            <br/>
+            <div class="center" style="font-size:10px;">${new Date().toLocaleString()}</div>
+            <br/>
+            <div class="center">Thank you!</div>
+        </div>
+    `;
+    // Note: We return raw div content here, wrapHtml is called at the end
+    return content;
 }
 
-function printVoucher(targetIp, voucherData) {
+function generateVoucher(voucherData) {
     const ownerName = voucherData.user_name ? voucherData.user_name : "BEARER NOTE";
     
-    console.log(`\n💵 === PRINTING VOUCHER [${targetIp}] ===`);
-    console.log(`AMOUNT: $${parseFloat(voucherData.amount).toFixed(2)}`);
-    console.log(`OWNER: ${ownerName}`);
-    console.log(`ID: ${voucherData.id}`);
-    console.log(`==========================================\n`);
-
-    sendToPrinter(targetIp, (printer, device) => {
-        printer
-            .font('a').align('ct').style('b').size(2, 2)
-            .text('E-BUCKS')
-            .size(0, 0).feed(1)
-            .text('OFFICIAL CURRENCY')
-            .text('--------------------------------')
-            .size(1, 1).text(`$${parseFloat(voucherData.amount).toFixed(2)}`)
-            .feed(1).size(0, 0)
-            .text(`Owner: ${ownerName}`)
-            .feed(1)
-            .barcode(voucherData.id, 'CODE39', { width: 2, height: 100 }) 
-            .text(voucherData.id)
-            .feed(2).cut().close();
-    });
+    return `
+        <div class="cut">
+            <h1 class="center bold">E-BUCKS</h1>
+            <div class="center">OFFICIAL CHANGE</div>
+            <div class="divider"></div>
+            <h2 class="center bold" style="font-size: 24px;">$${parseFloat(voucherData.amount).toFixed(2)}</h2>
+            <div class="center">Owner: ${ownerName}</div>
+            <br/>
+            <div class="center">
+                <svg class="barcode"
+                    jsbarcode-format="CODE39"
+                    jsbarcode-value="${voucherData.id}"
+                    jsbarcode-width="2"
+                    jsbarcode-height="60"
+                    jsbarcode-displayValue="true">
+                </svg>
+            </div>
+            <br/>
+        </div>
+    `;
 }
 
-function printTest(targetIp) {
-    console.log(`\n🖨️ TEST PRINT sent to ${targetIp}`);
-    sendToPrinter(targetIp, (printer, device) => {
-        printer
-            .font('a').align('ct').size(1, 1)
-            .text('TEST PRINT SUCCESSFUL')
-            .feed(2).cut().close();
-    });
+// Combines multiple HTML snippets into one printable page
+function combinePrints(htmlContentArray) {
+    return wrapHtml(htmlContentArray.join(''));
 }
 
-module.exports = { printReceipt, printVoucher, printTest };
+module.exports = { generateReceipt, generateVoucher, combinePrints };

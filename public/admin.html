@@ -10,47 +10,64 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         body { background-color: #0f172a; }
-        .tab-active { background-color: #2563eb; color: white; border-color: #2563eb; }
-        .tab-inactive { background-color: #1e293b; color: #94a3b8; border-color: #334155; }
+        .tab-btn { padding: 8px 24px; border-radius: 999px; font-weight: bold; white-space: nowrap; transition: all 0.2s; }
+        .tab-active { background-color: #2563eb; color: white; }
+        .tab-inactive { background-color: #1e293b; color: #94a3b8; border: 1px solid #334155; }
+        .tab-inactive:hover { background-color: #334155; }
     </style>
 </head>
 <body class="text-slate-300 h-screen w-screen overflow-hidden flex flex-col">
 
-    <a href="/" class="fixed top-4 left-4 z-50 bg-slate-800 text-white p-2 rounded-lg shadow-xl hover:bg-slate-700 border border-slate-700 text-xl">🏠</a>
+    <a href="/" class="fixed top-4 left-4 z-50 bg-slate-800 text-white p-2 rounded-lg shadow-xl hover:bg-slate-700 border border-slate-700 text-xl no-underline">🏠</a>
 
     <div id="root" class="flex-1 flex flex-col h-full"></div>
 
     <script type="text/babel">
-        const { useState, useEffect } = React;
+        const { useState, useEffect, useRef } = React;
+
+        // Print Helper
+        const handlePrintResponse = (data) => {
+            if (data && data.printWindow) {
+                const printWindow = window.open('', '_blank', 'width=400,height=600');
+                if (printWindow) {
+                    printWindow.document.write(data.printWindow);
+                    printWindow.document.close(); 
+                }
+            }
+        };
 
         function AdminApp() {
-            // AUTH
             const [currentUser, setCurrentUser] = useState(null);
             const [pinInput, setPinInput] = useState("");
-            
-            // DATA & TABS
             const [activeTab, setActiveTab] = useState('inventory');
+            
+            // Data
             const [users, setUsers] = useState([]);
             const [inventory, setInventory] = useState([]);
-            const [printers, setPrinters] = useState([]);
             const [unpaidSheets, setUnpaidSheets] = useState([]);
             const [financials, setFinancials] = useState([]);
-            const [selectedStudent, setSelectedStudent] = useState(null);
-
-            // FORMS
+            
+            // Edit States
+            const [editingUser, setEditingUser] = useState(null);
+            const [editingItem, setEditingItem] = useState(null);
+            const [tagModalItem, setTagModalItem] = useState(null);
+            const [tagQty, setTagQty] = useState(1);
+            
+            // Create States
             const [newUser, setNewUser] = useState({ name: '', role: 'Employee', pin: '', hourly_rate: 15.00 });
             const [newItem, setNewItem] = useState({ name: '', price: '', stock: '', barcode: '' });
-            const [newPrinter, setNewPrinter] = useState({ name: '', ip_address: '', assignment: 'NONE' });
             const [mintAmount, setMintAmount] = useState('');
             const [mintUser, setMintUser] = useState('');
+            
+            // File Refs
+            const userFileRef = useRef(null);
+            const invFileRef = useRef(null);
 
             useEffect(() => {
                 if(currentUser) {
                     fetchUsers(); fetchInventory();
                     if(currentUser.role === 'Admin') { 
-                        fetchPrinters(); 
-                        fetchPayroll(); 
-                        fetchFinancials();
+                        fetchPayroll(); fetchFinancials();
                         setActiveTab('users'); 
                     }
                 }
@@ -58,135 +75,337 @@
 
             const fetchUsers = () => fetch('/api/users').then(r=>r.json()).then(setUsers);
             const fetchInventory = () => fetch('/api/inventory').then(r=>r.json()).then(setInventory);
-            const fetchPrinters = () => fetch('/api/printers').then(r=>r.json()).then(setPrinters);
             const fetchPayroll = () => fetch('/api/payroll/unpaid').then(r=>r.json()).then(setUnpaidSheets);
             const fetchFinancials = () => fetch('/api/financials').then(r=>r.json()).then(setFinancials);
-
+            
             const handleLogin = async (e) => {
                 e.preventDefault();
-                const res = await fetch('/api/login', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({pin: pinInput}) });
-                const data = await res.json();
-                if(data.success && data.user.role !== 'Employee') setCurrentUser(data.user);
-                else alert("Access Denied");
+                try {
+                    const res = await fetch('/api/login', { 
+                        method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({pin: pinInput}) 
+                    });
+                    const data = await res.json();
+                    if(data.success && data.user.role !== 'Employee') setCurrentUser(data.user);
+                    else alert("Access Denied");
+                } catch(err) { alert("Login Error"); }
             };
 
-            // CRUD
-            const addUser = async (e) => { e.preventDefault(); await fetch('/api/users', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(newUser)}); fetchUsers(); };
-            const addItem = async (e) => { e.preventDefault(); await fetch('/api/inventory', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(newItem)}); fetchInventory(); };
-            const addPrinter = async (e) => { e.preventDefault(); await fetch('/api/printers', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(newPrinter)}); fetchPrinters(); };
-            const deletePrinter = async (id) => { if(confirm("Delete printer?")) { await fetch(`/api/printers/${id}`, {method:'DELETE'}); fetchPrinters(); } };
-            const testPrinter = async (ip) => { await fetch('/api/printers/test', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ip})}); };
-            
-            const mintVoucher = async (e) => { e.preventDefault(); await fetch('/api/mint', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({amount:parseFloat(mintAmount), userId: mintUser||null})}); alert("Minted!"); };
-            const processPayroll = async () => { if(confirm("Print Checks?")) { await fetch('/api/payroll/process', {method:'POST'}); fetchPayroll(); }};
+            // --- USER CRUD ---
+            const createUser = async (e) => { e.preventDefault(); await fetch('/api/users', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(newUser)}); setNewUser({ name: '', role: 'Employee', pin: '', hourly_rate: 15.00 }); fetchUsers(); };
+            const updateUser = async (e) => { e.preventDefault(); await fetch(`/api/users/${editingUser.id}`, { method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify(editingUser) }); setEditingUser(null); fetchUsers(); };
+            const deleteUser = async (id) => { if(confirm("Delete user?")) { await fetch(`/api/users/${id}`, { method: 'DELETE' }); fetchUsers(); } };
 
-            // MODAL
-            const StudentModal = ({ s, onClose }) => {
-                const [d, setD] = useState(null);
-                useEffect(() => { fetch(`/api/users/${s.id}/details`).then(r=>r.json()).then(setD); }, [s]);
-                if(!d) return <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 text-white">Loading...</div>;
-                return (
-                    <div className="fixed inset-0 bg-black/90 z-50 flex items-center justify-center p-4">
-                        <div className="bg-slate-900 border border-slate-700 w-full max-w-3xl h-[80vh] rounded-2xl flex flex-col relative p-6">
-                            <button onClick={onClose} className="absolute top-4 right-4 text-white text-2xl">×</button>
-                            <h2 className="text-3xl font-black text-white mb-2">{s.name} <span className="text-sm font-normal text-slate-400">Balance: ${d.balance.toFixed(2)}</span></h2>
-                            <div className="flex-1 overflow-y-auto grid grid-cols-2 gap-4">
-                                <div><h3 className="font-bold text-slate-500 text-xs mb-2">VOUCHERS</h3>{d.activeVouchers.map(v=><div key={v.id} className="bg-slate-800 p-2 mb-1 rounded text-green-400 font-mono flex justify-between"><span>{v.id}</span><span>${v.amount}</span></div>)}</div>
-                                <div><h3 className="font-bold text-slate-500 text-xs mb-2">TIMECARDS</h3>{d.timesheets.map(t=><div key={t.id} className="bg-slate-800 p-2 mb-1 rounded text-xs flex justify-between"><span className="text-slate-400">{new Date(t.clock_in).toLocaleDateString()}</span><span className={t.is_paid?'text-green-500':'text-yellow-500'}>{t.total_hours?.toFixed(2)||'Active'}h</span></div>)}</div>
-                            </div>
+            // --- INVENTORY CRUD ---
+            const createItem = async (e) => { e.preventDefault(); await fetch('/api/inventory', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(newItem)}); setNewItem({ name: '', price: '', stock: '', barcode: '' }); fetchInventory(); };
+            const updateItem = async (e) => { e.preventDefault(); await fetch(`/api/inventory/${editingItem.id}`, { method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify(editingItem) }); setEditingItem(null); fetchInventory(); };
+            const deleteItem = async (id) => { if(confirm("Delete item?")) { await fetch(`/api/inventory/${id}`, { method: 'DELETE' }); fetchInventory(); } };
+
+            // --- PRICE TAG GENERATOR (2x2 with Barcode) ---
+            const printTags = () => {
+                if(!tagModalItem || tagQty < 1) return;
+                
+                const item = tagModalItem;
+                const barcodeValue = item.barcode || item.name; // Fallback to name if no barcode
+
+                // Generate HTML for labels
+                let labelsHtml = "";
+                for(let i=0; i<tagQty; i++) {
+                    labelsHtml += `
+                        <div class="tag">
+                            <div class="name">${item.name}</div>
+                            <div class="price">$${item.price.toFixed(2)}</div>
+                            <svg class="barcode-tag"
+                                jsbarcode-value="${barcodeValue}"
+                                jsbarcode-width="2"
+                                jsbarcode-height="40"
+                                jsbarcode-displayValue="false"
+                                jsbarcode-margin="0">
+                            </svg>
+                            <div class="code-text">${barcodeValue}</div>
                         </div>
-                    </div>
-                );
+                    `;
+                }
+
+                // Split script tag to prevent parser errors
+                const closingScript = "<" + "/script>"; 
+
+                const printContent = `
+                    <!DOCTYPE html>
+                    <html>
+                    <head>
+                        <title>Tags: ${item.name}</title>
+                        <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.5/dist/JsBarcode.all.min.js">${closingScript}
+                        <style>
+                            @page { size: 2in 2in; margin: 0; }
+                            body { 
+                                margin: 0; padding: 0; 
+                                font-family: sans-serif; 
+                                display: flex; flex-wrap: wrap; 
+                            }
+                            .tag { 
+                                width: 2in; height: 2in; 
+                                box-sizing: border-box; 
+                                border: 1px dashed #ccc; /* Helper border, remove for final if needed */
+                                display: flex; flex-direction: column; 
+                                align-items: center; justify-content: center; 
+                                text-align: center; 
+                                overflow: hidden;
+                                padding: 5px;
+                            }
+                            .name { font-size: 14px; line-height: 1.2; font-weight: bold; margin-bottom: 5px; max-height: 2.4em; overflow: hidden; }
+                            .price { font-size: 28px; font-weight: 900; margin-bottom: 5px; }
+                            svg { max-width: 90%; }
+                            .code-text { font-size: 10px; font-family: monospace; }
+                            
+                            /* Print Specifics */
+                            @media print {
+                                body { width: 100%; }
+                                .tag { break-inside: avoid; border: none; } /* Hide border on print */
+                            }
+                        </style>
+                    </head>
+                    <body>
+                        ${labelsHtml}
+                        <script>
+                            window.onload = function() { 
+                                JsBarcode(".barcode-tag").init();
+                                // Slight delay to ensure rendering
+                                setTimeout(() => window.print(), 500);
+                            }
+                        ${closingScript}
+                    </body>
+                    </html>
+                `;
+
+                const win = window.open('', '_blank', 'width=500,height=600');
+                if(win) {
+                    win.document.write(printContent);
+                    win.document.close();
+                }
+                setTagModalItem(null);
             };
 
-            if (!currentUser) return (
-                <div className="h-full flex items-center justify-center bg-slate-900">
-                    <div className="bg-slate-800 p-10 rounded-2xl shadow-2xl max-w-md w-full">
-                        <h1 className="text-3xl font-black text-center text-white mb-6">LOGIN</h1>
-                        <form onSubmit={handleLogin}><input type="password" value={pinInput} onChange={e=>setPinInput(e.target.value)} className="w-full bg-slate-900 border-2 border-slate-700 text-white text-center text-4xl p-4 rounded-xl mb-4" autoFocus /><button className="w-full bg-blue-600 text-white font-bold py-4 rounded-xl">ENTER</button></form>
-                    </div>
-                </div>
-            );
+            // --- CSV HANDLERS ---
+            // Users
+            const exportUsers = () => downloadCSV(users.map(u => `${u.name},${u.role},${u.pin},${u.hourly_rate}`), "Name,Role,PIN,Rate", "employees");
+            const importUsers = (e) => processCSV(e, (cols) => fetch('/api/users', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({name:cols[0], role:cols[1]||'Employee', pin:cols[2], hourly_rate:cols[3]||15})}), fetchUsers);
+            
+            // Inventory
+            const exportInv = () => downloadCSV(inventory.map(i => `${i.name},${i.price},${i.stock},${i.barcode||''}`), "Name,Price,Stock,Barcode", "inventory");
+            const importInv = (e) => processCSV(e, (cols) => fetch('/api/inventory', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({name:cols[0], price:cols[1], stock:cols[2], barcode:cols[3]||''})}), fetchInventory);
+
+            // CSV Helpers
+            const downloadCSV = (rows, headers, fname) => {
+                const blob = new Blob([headers + "\n" + rows.join("\n")], { type: 'text/csv' });
+                const a = document.createElement('a');
+                a.href = window.URL.createObjectURL(blob);
+                a.download = `${fname}_${new Date().toISOString().split('T')[0]}.csv`;
+                a.click();
+            };
+            const processCSV = (e, rowAction, callback) => {
+                const file = e.target.files[0];
+                if(!file) return;
+                const reader = new FileReader();
+                reader.onload = async (evt) => {
+                    const lines = evt.target.result.split('\n');
+                    for(let i=1; i<lines.length; i++) {
+                        const line = lines[i].trim();
+                        if(line) await rowAction(line.split(','));
+                    }
+                    alert("Import Complete");
+                    callback();
+                    e.target.value = null;
+                };
+                reader.readAsText(file);
+            };
+
+            // Other Actions
+            const mintVoucher = async (e) => { e.preventDefault(); const res = await fetch('/api/mint', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ amount: parseFloat(mintAmount), userId: mintUser || null }) }); const data = await res.json(); if(data.success) { alert("✅ Money Minted!"); setMintAmount(''); handlePrintResponse(data); } };
+            const processPayroll = async () => { if(confirm("Print all paychecks?")) { const res = await fetch('/api/payroll/process', { method:'POST' }); const data = await res.json(); if(data.success) { alert(`Processed ${data.count || 0} checks.`); fetchPayroll(); handlePrintResponse(data); } } };
+
+            if (!currentUser) return <div className="h-full flex items-center justify-center bg-slate-900"><div className="bg-slate-800 p-10 rounded-2xl shadow-2xl max-w-md w-full border border-slate-700"><h1 className="text-3xl font-black text-center text-white mb-6">LOGIN</h1><form onSubmit={handleLogin}><input type="password" value={pinInput} onChange={e=>setPinInput(e.target.value)} className="w-full bg-slate-900 border-2 border-slate-600 text-white text-center text-4xl p-4 rounded-xl mb-4" autoFocus placeholder="PIN" /><button className="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-4 rounded-xl">ENTER</button></form></div></div>;
 
             return (
-                <div className="flex flex-col h-full max-w-6xl mx-auto w-full p-6">
-                    {selectedStudent && <StudentModal s={selectedStudent} onClose={()=>setSelectedStudent(null)} />}
+                <div className="flex flex-col h-full max-w-7xl mx-auto w-full p-4 md:p-6">
                     
-                    <div className="flex items-center justify-between mb-8">
-                        <h1 className="text-4xl font-black text-white">COMMAND CENTER</h1>
-                        <button onClick={()=>setCurrentUser(null)} className="text-red-400 font-bold">Logout</button>
+                    {/* EDIT ITEM MODAL */}
+                    {editingItem && (
+                        <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
+                            <div className="bg-slate-900 p-6 rounded-xl border border-slate-700 w-full max-w-lg shadow-2xl">
+                                <h2 className="text-2xl font-black text-white mb-4">Edit Item</h2>
+                                <form onSubmit={updateItem} className="flex flex-col gap-4">
+                                    <div><label className="text-xs uppercase font-bold text-slate-500">Item Name</label><input value={editingItem.name} onChange={e=>setEditingItem({...editingItem, name:e.target.value})} className="w-full bg-slate-950 p-3 rounded text-white border border-slate-700"/></div>
+                                    <div className="flex gap-4">
+                                        <div className="flex-1"><label className="text-xs uppercase font-bold text-slate-500">Price ($)</label><input value={editingItem.price} onChange={e=>setEditingItem({...editingItem, price:e.target.value})} className="w-full bg-slate-950 p-3 rounded text-white border border-slate-700"/></div>
+                                        <div className="flex-1"><label className="text-xs uppercase font-bold text-slate-500">Stock</label><input value={editingItem.stock} onChange={e=>setEditingItem({...editingItem, stock:e.target.value})} className="w-full bg-slate-950 p-3 rounded text-white border border-slate-700"/></div>
+                                    </div>
+                                    <div><label className="text-xs uppercase font-bold text-slate-500">Barcode / UPC</label><input value={editingItem.barcode||''} onChange={e=>setEditingItem({...editingItem, barcode:e.target.value})} className="w-full bg-slate-950 p-3 rounded text-white border border-slate-700 font-mono" placeholder="Scan or type..."/></div>
+                                    <div className="flex gap-2 mt-4">
+                                        <button type="button" onClick={()=>setEditingItem(null)} className="flex-1 bg-slate-800 text-white p-3 rounded font-bold hover:bg-slate-700">Cancel</button>
+                                        <button type="submit" className="flex-1 bg-green-600 text-white p-3 rounded font-bold hover:bg-green-500">Save</button>
+                                    </div>
+                                </form>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* TAG PRINT MODAL */}
+                    {tagModalItem && (
+                        <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
+                            <div className="bg-slate-900 p-6 rounded-xl border border-slate-700 w-full max-w-sm shadow-2xl text-center">
+                                <h2 className="text-xl font-black text-white mb-1">Print Price Tags</h2>
+                                <p className="text-slate-400 mb-6">For: {tagModalItem.name} (${tagModalItem.price.toFixed(2)})</p>
+                                
+                                <div className="mb-6">
+                                    <label className="text-xs uppercase font-bold text-slate-500 block mb-2">Quantity (2x2" labels)</label>
+                                    <input type="number" min="1" value={tagQty} onChange={e=>setTagQty(parseInt(e.target.value))} className="w-24 text-center bg-slate-950 p-3 rounded text-white border border-slate-700 text-xl font-mono"/>
+                                </div>
+                                
+                                <div className="flex gap-2">
+                                    <button onClick={()=>setTagModalItem(null)} className="flex-1 bg-slate-800 text-white p-3 rounded font-bold hover:bg-slate-700">Cancel</button>
+                                    <button onClick={printTags} className="flex-1 bg-blue-600 text-white p-3 rounded font-bold hover:bg-blue-500">Print</button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* EDIT USER MODAL */}
+                    {editingUser && (
+                        <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
+                            <div className="bg-slate-900 p-6 rounded-xl border border-slate-700 w-full max-w-lg shadow-2xl">
+                                <h2 className="text-2xl font-black text-white mb-4">Edit Employee</h2>
+                                <form onSubmit={updateUser} className="flex flex-col gap-4">
+                                    <div><label className="text-xs uppercase font-bold text-slate-500">Name</label><input value={editingUser.name} onChange={e=>setEditingUser({...editingUser, name:e.target.value})} className="w-full bg-slate-950 p-3 rounded text-white border border-slate-700"/></div>
+                                    <div className="flex gap-4"><div className="flex-1"><label className="text-xs uppercase font-bold text-slate-500">Role</label><select value={editingUser.role} onChange={e=>setEditingUser({...editingUser, role:e.target.value})} className="w-full bg-slate-950 p-3 rounded text-white border border-slate-700"><option>Employee</option><option>Manager</option><option>Admin</option></select></div><div className="w-1/3"><label className="text-xs uppercase font-bold text-slate-500">Rate ($)</label><input value={editingUser.hourly_rate} onChange={e=>setEditingUser({...editingUser, hourly_rate:e.target.value})} className="w-full bg-slate-950 p-3 rounded text-white border border-slate-700"/></div></div>
+                                    <div><label className="text-xs uppercase font-bold text-slate-500">PIN</label><input value={editingUser.pin} onChange={e=>setEditingUser({...editingUser, pin:e.target.value})} className="w-full bg-slate-950 p-3 rounded text-white border border-slate-700 font-mono tracking-widest"/></div>
+                                    <div className="flex gap-2 mt-4"><button type="button" onClick={()=>setEditingUser(null)} className="flex-1 bg-slate-800 text-white p-3 rounded font-bold hover:bg-slate-700">Cancel</button><button type="submit" className="flex-1 bg-green-600 text-white p-3 rounded font-bold hover:bg-green-500">Save</button></div>
+                                </form>
+                            </div>
+                        </div>
+                    )}
+
+                    <div className="flex flex-col md:flex-row md:items-center justify-between mb-6 gap-4">
+                        <h1 className="text-4xl font-black text-white tracking-tight">COMMAND CENTER</h1>
+                        <button onClick={()=>setCurrentUser(null)} className="text-red-400 font-bold hover:text-red-300">Logout</button>
                     </div>
 
-                    <div className="flex gap-4 mb-6 overflow-x-auto pb-2">
-                        <button onClick={()=>setActiveTab('users')} className={`px-6 py-2 rounded-full font-bold whitespace-nowrap ${activeTab==='users'?'tab-active':'tab-inactive'}`}>Users</button>
-                        <button onClick={()=>setActiveTab('inventory')} className={`px-6 py-2 rounded-full font-bold whitespace-nowrap ${activeTab==='inventory'?'tab-active':'tab-inactive'}`}>Inventory</button>
-                        {currentUser.role==='Admin' && <>
-                            <button onClick={()=>setActiveTab('payroll')} className={`px-6 py-2 rounded-full font-bold whitespace-nowrap ${activeTab==='payroll'?'tab-active':'tab-inactive'}`}>Payroll</button>
-                            <button onClick={()=>setActiveTab('financials')} className={`px-6 py-2 rounded-full font-bold whitespace-nowrap ${activeTab==='financials'?'tab-active':'tab-inactive'}`}>💰 Financials</button>
-                            <button onClick={()=>setActiveTab('bank')} className={`px-6 py-2 rounded-full font-bold whitespace-nowrap ${activeTab==='bank'?'tab-active':'tab-inactive'}`}>Bank</button>
-                            <button onClick={()=>setActiveTab('printers')} className={`px-6 py-2 rounded-full font-bold whitespace-nowrap ${activeTab==='printers'?'tab-active':'tab-inactive'}`}>🖨️ Printers</button>
-                        </>}
+                    <div className="flex gap-3 mb-6 overflow-x-auto pb-2 scrollbar-hide">
+                        <button onClick={()=>setActiveTab('users')} className={`tab-btn ${activeTab==='users'?'tab-active':'tab-inactive'}`}>Users</button>
+                        <button onClick={()=>setActiveTab('inventory')} className={`tab-btn ${activeTab==='inventory'?'tab-active':'tab-inactive'}`}>Inventory</button>
+                        {currentUser.role==='Admin' && (<><button onClick={()=>setActiveTab('payroll')} className={`tab-btn ${activeTab==='payroll'?'tab-active':'tab-inactive'}`}>Payroll</button><button onClick={()=>setActiveTab('financials')} className={`tab-btn ${activeTab==='financials'?'tab-active':'tab-inactive'}`}>💰 Financials</button><button onClick={()=>setActiveTab('bank')} className={`tab-btn ${activeTab==='bank'?'tab-active':'tab-inactive'}`}>🏦 Bank</button></>)}
                     </div>
 
-                    <div className="flex-1 bg-slate-900 border border-slate-800 rounded-2xl p-6 overflow-hidden flex flex-col">
+                    <div className="flex-1 bg-slate-900 border border-slate-800 rounded-3xl p-6 overflow-hidden flex flex-col shadow-xl">
                         
-                        {/* USERS */}
-                        {activeTab==='users' && <div className="h-full flex flex-col">
-                            {currentUser.role==='Admin'&&<form onSubmit={addUser} className="bg-slate-800 p-4 rounded mb-4 flex gap-2"><input placeholder="Name" value={newUser.name} onChange={e=>setNewUser({...newUser,name:e.target.value})} className="bg-slate-900 text-white p-2 rounded flex-1"/><select value={newUser.role} onChange={e=>setNewUser({...newUser,role:e.target.value})} className="bg-slate-900 text-white p-2 rounded"><option>Employee</option><option>Manager</option><option>Admin</option></select><input placeholder="PIN" value={newUser.pin} onChange={e=>setNewUser({...newUser,pin:e.target.value})} className="bg-slate-900 text-white p-2 rounded w-24"/><input placeholder="Rate" value={newUser.hourly_rate} onChange={e=>setNewUser({...newUser,hourly_rate:e.target.value})} className="bg-slate-900 text-white p-2 rounded w-20"/><button className="bg-blue-600 px-4 rounded text-white">Add</button></form>}
-                            <div className="flex-1 overflow-y-auto"><table className="w-full text-left text-sm text-slate-400"><thead className="bg-slate-950 text-slate-500"><tr><th className="p-3">Name</th><th>Role</th><th>Rate</th></tr></thead><tbody>{users.map(u=><tr key={u.id} className="border-b border-slate-800 hover:bg-slate-800 cursor-pointer" onClick={()=>setSelectedStudent(u)}><td className="p-3 font-bold text-white">{u.name}</td><td>{u.role}</td><td>${u.hourly_rate}</td></tr>)}</tbody></table></div>
-                        </div>}
+                        {/* TAB: USERS */}
+                        {activeTab==='users' && (
+                            <div className="h-full flex flex-col">
+                                {currentUser.role==='Admin' && (
+                                    <div className="mb-4 space-y-4">
+                                        <form onSubmit={createUser} className="bg-slate-800 p-4 rounded-xl flex gap-2 flex-wrap md:flex-nowrap items-end">
+                                            <div className="flex-1"><label className="text-xs font-bold text-slate-500">Name</label><input value={newUser.name} onChange={e=>setNewUser({...newUser,name:e.target.value})} className="w-full bg-slate-950 border border-slate-700 text-white p-2 rounded"/></div>
+                                            <div className="w-32"><label className="text-xs font-bold text-slate-500">Role</label><select value={newUser.role} onChange={e=>setNewUser({...newUser,role:e.target.value})} className="w-full bg-slate-950 border border-slate-700 text-white p-2 rounded"><option>Employee</option><option>Manager</option><option>Admin</option></select></div>
+                                            <div className="w-24"><label className="text-xs font-bold text-slate-500">PIN</label><input value={newUser.pin} onChange={e=>setNewUser({...newUser,pin:e.target.value})} className="w-full bg-slate-950 border border-slate-700 text-white p-2 rounded"/></div>
+                                            <div className="w-20"><label className="text-xs font-bold text-slate-500">Rate</label><input value={newUser.hourly_rate} onChange={e=>setNewUser({...newUser,hourly_rate:e.target.value})} className="w-full bg-slate-950 border border-slate-700 text-white p-2 rounded"/></div>
+                                            <button className="bg-blue-600 hover:bg-blue-500 px-6 py-2 rounded text-white font-bold h-[42px]">Add</button>
+                                        </form>
+                                        <div className="flex gap-2">
+                                            <input type="file" ref={userFileRef} onChange={importUsers} className="hidden" accept=".csv" />
+                                            <button onClick={()=>userFileRef.current.click()} className="bg-slate-700 hover:bg-slate-600 text-white text-xs font-bold py-2 px-4 rounded border border-slate-600">📂 Import CSV</button>
+                                            <button onClick={exportUsers} className="bg-slate-700 hover:bg-slate-600 text-white text-xs font-bold py-2 px-4 rounded border border-slate-600">⬇️ Export CSV</button>
+                                        </div>
+                                    </div>
+                                )}
+                                <div className="flex-1 overflow-y-auto">
+                                    <table className="w-full text-left text-sm text-slate-400"><thead className="bg-slate-950 text-slate-500 uppercase text-xs sticky top-0"><tr><th className="p-3">Name</th><th>Role</th><th>PIN</th><th>Rate</th><th className="text-right">Actions</th></tr></thead><tbody className="divide-y divide-slate-800">{users.map(u => (<tr key={u.id} className="hover:bg-slate-800 transition-colors"><td className="p-3 font-bold text-white">{u.name}</td><td><span className={`text-xs px-2 py-1 rounded font-bold ${u.role==='Admin'?'bg-red-900 text-red-200':'bg-slate-700 text-slate-300'}`}>{u.role}</span></td><td className="font-mono">{u.pin}</td><td>${u.hourly_rate}</td><td className="text-right p-2">{currentUser.role === 'Admin' && (<div className="flex justify-end gap-2"><button onClick={()=>setEditingUser(u)} className="text-blue-400 font-bold text-xs">Edit</button><button onClick={()=>deleteUser(u.id)} className="text-red-400 font-bold text-xs">Delete</button></div>)}</td></tr>))}</tbody></table>
+                                </div>
+                            </div>
+                        )}
 
-                        {/* INVENTORY */}
-                        {activeTab==='inventory' && <div className="h-full flex flex-col">
-                            <form onSubmit={addItem} className="bg-slate-800 p-4 rounded mb-4 flex gap-2"><input placeholder="Item" value={newItem.name} onChange={e=>setNewItem({...newItem,name:e.target.value})} className="bg-slate-900 text-white p-2 rounded flex-1"/><input placeholder="Price" value={newItem.price} onChange={e=>setNewItem({...newItem,price:e.target.value})} className="bg-slate-900 text-white p-2 rounded w-24"/><input placeholder="Stock" value={newItem.stock} onChange={e=>setNewItem({...newItem,stock:e.target.value})} className="bg-slate-900 text-white p-2 rounded w-24"/><button className="bg-blue-600 px-4 rounded text-white">Add</button></form>
-                            <div className="flex-1 overflow-y-auto"><table className="w-full text-left text-sm text-slate-400"><thead className="bg-slate-950 text-slate-500"><tr><th className="p-3">Item</th><th>Price</th><th>Stock</th></tr></thead><tbody>{inventory.map(i=><tr key={i.id} className="border-b border-slate-800"><td className="p-3 text-white">{i.name}</td><td className="text-green-400">${i.price}</td><td>{i.stock}</td></tr>)}</tbody></table></div>
-                        </div>}
-
-                        {/* PAYROLL */}
-                        {activeTab==='payroll' && <div className="h-full flex flex-col">
-                             <div className="flex justify-between mb-4"><h2 className="font-bold text-white">Unpaid Shifts</h2><button onClick={processPayroll} className="bg-green-600 text-white px-4 py-2 rounded font-bold">Process Payroll</button></div>
-                             <div className="flex-1 overflow-y-auto">{unpaidSheets.map(s=><div key={s.id} className="flex justify-between p-3 border-b border-slate-800"><span>{s.name}</span><span className="text-green-400 font-mono">${(s.total_hours*s.hourly_rate).toFixed(2)}</span></div>)}</div>
-                        </div>}
-
-                        {/* NEW: FINANCIALS */}
-                        {activeTab==='financials' && <div className="h-full flex flex-col">
-                             <h2 className="font-bold text-white mb-4">Store Transactions</h2>
-                             <div className="flex-1 overflow-y-auto">
-                                <table className="w-full text-left text-sm text-slate-400">
-                                    <thead className="bg-slate-950 text-slate-500">
-                                        <tr><th className="p-3">Time</th><th>Items</th><th className="text-right">Total</th></tr>
-                                    </thead>
-                                    <tbody className="divide-y divide-slate-800">
-                                        {financials.map(f=>(
-                                            <tr key={f.id} className="hover:bg-slate-800/50">
-                                                <td className="p-3 text-white font-mono text-xs">{new Date(f.created_at).toLocaleString()}</td>
-                                                <td>{f.items.join(', ')}</td>
-                                                <td className="text-right text-green-400 font-bold pr-3">${f.total_cost.toFixed(2)}</td>
+                        {/* TAB: INVENTORY */}
+                        {activeTab==='inventory' && (
+                            <div className="h-full flex flex-col">
+                                <div className="mb-4 space-y-4">
+                                    <form onSubmit={createItem} className="bg-slate-800 p-4 rounded-xl flex gap-2 items-end">
+                                        <div className="flex-1 min-w-[200px]"><label className="text-xs font-bold text-slate-500">Item</label><input value={newItem.name} onChange={e=>setNewItem({...newItem,name:e.target.value})} className="w-full bg-slate-950 border border-slate-700 text-white p-2 rounded"/></div>
+                                        <div className="w-24"><label className="text-xs font-bold text-slate-500">Price</label><input value={newItem.price} onChange={e=>setNewItem({...newItem,price:e.target.value})} className="w-full bg-slate-950 border border-slate-700 text-white p-2 rounded"/></div>
+                                        <div className="w-20"><label className="text-xs font-bold text-slate-500">Stock</label><input value={newItem.stock} onChange={e=>setNewItem({...newItem,stock:e.target.value})} className="w-full bg-slate-950 border border-slate-700 text-white p-2 rounded"/></div>
+                                        <div className="w-40"><label className="text-xs font-bold text-slate-500">Barcode</label><input value={newItem.barcode} onChange={e=>setNewItem({...newItem,barcode:e.target.value})} className="w-full bg-slate-950 border border-slate-700 text-white p-2 rounded" placeholder="Scan..."/></div>
+                                        <button className="bg-blue-600 hover:bg-blue-500 px-6 py-2 rounded text-white font-bold h-[42px]">Add</button>
+                                    </form>
+                                    <div className="flex gap-2">
+                                        <input type="file" ref={invFileRef} onChange={importInv} className="hidden" accept=".csv" />
+                                        <button onClick={()=>invFileRef.current.click()} className="bg-slate-700 hover:bg-slate-600 text-white text-xs font-bold py-2 px-4 rounded border border-slate-600">📂 Import CSV</button>
+                                        <button onClick={exportInv} className="bg-slate-700 hover:bg-slate-600 text-white text-xs font-bold py-2 px-4 rounded border border-slate-600">⬇️ Export CSV</button>
+                                    </div>
+                                </div>
+                                <div className="flex-1 overflow-y-auto">
+                                    <table className="w-full text-left text-sm text-slate-400">
+                                        <thead className="bg-slate-950 text-slate-500 sticky top-0"><tr><th className="p-3">Item</th><th>Price</th><th>Stock</th><th>Barcode</th><th className="text-right">Actions</th></tr></thead>
+                                        <tbody className="divide-y divide-slate-800">{inventory.map(i=>(
+                                            <tr key={i.id} className="hover:bg-slate-800/50">
+                                                <td className="p-3 text-white">{i.name}</td>
+                                                <td className="text-green-400 font-mono">${i.price}</td>
+                                                <td>{i.stock}</td>
+                                                <td className="font-mono text-xs">{i.barcode || '-'}</td>
+                                                <td className="text-right p-2">
+                                                    <div className="flex justify-end gap-2">
+                                                        <button onClick={()=>{setTagModalItem(i); setTagQty(1);}} className="text-yellow-400 hover:text-yellow-300 font-bold text-xs bg-yellow-900/30 px-3 py-1 rounded">🏷️ Tag</button>
+                                                        <button onClick={()=>setEditingItem(i)} className="text-blue-400 hover:text-blue-300 font-bold text-xs bg-blue-900/30 px-3 py-1 rounded">Edit</button>
+                                                        <button onClick={()=>deleteItem(i.id)} className="text-red-400 hover:text-red-300 font-bold text-xs bg-red-900/30 px-3 py-1 rounded">Delete</button>
+                                                    </div>
+                                                </td>
                                             </tr>
-                                        ))}
-                                    </tbody>
-                                </table>
-                             </div>
-                        </div>}
+                                        ))}</tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        )}
 
-                        {/* BANK */}
-                        {activeTab==='bank' && <div className="flex flex-col items-center justify-center h-full"><div className="bg-slate-800 p-8 rounded max-w-md w-full"><h2 className="text-white font-bold mb-4">Mint Money</h2><form onSubmit={mintVoucher} className="flex flex-col gap-4"><select value={mintUser} onChange={e=>setMintUser(e.target.value)} className="bg-slate-900 text-white p-3 rounded"><option value="">-- Cash --</option>{users.map(u=><option key={u.id} value={u.id}>{u.name}</option>)}</select><input type="number" value={mintAmount} onChange={e=>setMintAmount(e.target.value)} className="bg-slate-900 text-white p-3 rounded" placeholder="0.00"/><button className="bg-green-600 text-white font-bold p-3 rounded">PRINT</button></form></div></div>}
+                        {/* TAB: PAYROLL */}
+                        {activeTab==='payroll' && (
+                            <div className="h-full flex flex-col">
+                                <div className="flex justify-between items-center mb-4 bg-slate-800 p-4 rounded-xl">
+                                    <h2 className="font-bold text-white text-lg">Unpaid Shifts</h2>
+                                    <button onClick={processPayroll} className="bg-green-600 hover:bg-green-500 text-white px-6 py-2 rounded-lg font-bold shadow-lg">🖨️ Print Checks</button>
+                                </div>
+                                <div className="flex-1 overflow-y-auto">
+                                    {unpaidSheets.map(s=>(<div key={s.id} className="flex justify-between items-center p-4 border-b border-slate-800 hover:bg-slate-800/50"><div><div className="font-bold text-white text-lg">{s.name}</div><div className="text-xs text-slate-500">Rate: ${s.hourly_rate}/hr</div></div><div className="text-right"><div className="text-green-400 font-mono font-bold text-xl">${(s.total_hours*s.hourly_rate).toFixed(2)}</div><div className="text-xs text-slate-500">{s.total_hours.toFixed(2)} hours</div></div></div>))}
+                                </div>
+                            </div>
+                        )}
 
-                        {/* PRINTERS */}
-                        {activeTab==='printers' && <div className="h-full flex flex-col">
-                            <form onSubmit={addPrinter} className="bg-slate-800 p-4 rounded mb-4 flex gap-2 items-end">
-                                <div className="flex-1"><label className="text-xs font-bold text-slate-500">Name</label><input placeholder="e.g. Front Counter" value={newPrinter.name} onChange={e=>setNewPrinter({...newPrinter,name:e.target.value})} className="w-full bg-slate-900 text-white p-2 rounded"/></div>
-                                <div className="w-40"><label className="text-xs font-bold text-slate-500">IP Address</label><input placeholder="192.168.1.xxx" value={newPrinter.ip_address} onChange={e=>setNewPrinter({...newPrinter,ip_address:e.target.value})} className="w-full bg-slate-900 text-white p-2 rounded"/></div>
-                                <div className="w-32"><label className="text-xs font-bold text-slate-500">Role</label><select value={newPrinter.assignment} onChange={e=>setNewPrinter({...newPrinter,assignment:e.target.value})} className="w-full bg-slate-900 text-white p-2 rounded"><option value="NONE">None</option><option value="POS">POS (Store)</option><option value="PAYROLL">Payroll (Office)</option></select></div>
-                                <button className="bg-blue-600 px-4 py-2 rounded text-white font-bold h-10">Add</button>
-                            </form>
-                            <div className="flex-1 overflow-y-auto"><table className="w-full text-left text-sm"><thead className="bg-slate-950 text-slate-500 uppercase text-xs"><tr><th className="p-3">Printer Name</th><th>IP Address</th><th>Assignment</th><th>Actions</th></tr></thead><tbody className="divide-y divide-slate-800">{printers.map(p => (<tr key={p.id} className="hover:bg-slate-800/50"><td className="p-3 font-bold text-white">{p.name}</td><td className="font-mono text-slate-400">{p.ip_address}</td><td><span className={`text-xs font-bold px-2 py-1 rounded ${p.assignment==='POS'?'bg-blue-900 text-blue-200':p.assignment==='PAYROLL'?'bg-green-900 text-green-200':'bg-slate-700'}`}>{p.assignment}</span></td><td className="flex gap-2 p-2"><button onClick={()=>testPrinter(p.ip_address)} className="text-xs bg-slate-700 hover:bg-slate-600 px-2 py-1 rounded text-white">Test</button><button onClick={()=>deletePrinter(p.id)} className="text-xs text-red-500 hover:underline">Remove</button></td></tr>))}</tbody></table></div>
-                        </div>}
+                        {/* TAB: FINANCIALS */}
+                        {activeTab==='financials' && (
+                            <div className="h-full flex flex-col">
+                                <h2 className="font-bold text-white mb-4 text-xl">Transaction Log</h2>
+                                <div className="flex-1 overflow-y-auto border border-slate-800 rounded-xl">
+                                    <table className="w-full text-left text-sm text-slate-400">
+                                        <thead className="bg-slate-950 text-slate-500 sticky top-0"><tr><th className="p-3">Time</th><th>Items</th><th className="text-right">Total</th></tr></thead>
+                                        <tbody className="divide-y divide-slate-800 bg-slate-900">{financials.map(f=>(<tr key={f.id} className="hover:bg-slate-800/50"><td className="p-3 text-slate-300 font-mono text-xs">{new Date(f.created_at).toLocaleString()}</td><td className="text-white">{f.items.join(', ')}</td><td className="text-right text-green-400 font-bold pr-3 font-mono">${f.total_cost.toFixed(2)}</td></tr>))}</tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        )}
 
+                        {/* TAB: BANK */}
+                        {activeTab==='bank' && (
+                            <div className="flex flex-col items-center justify-center h-full">
+                                <div className="bg-slate-800 p-8 rounded-2xl border border-slate-700 shadow-2xl max-w-md w-full">
+                                    <h2 className="text-white font-black text-2xl mb-6 text-center">🏦 Federal Reserve</h2>
+                                    <form onSubmit={mintVoucher} className="flex flex-col gap-4">
+                                        <select value={mintUser} onChange={e=>setMintUser(e.target.value)} className="w-full bg-slate-950 border border-slate-600 text-white p-3 rounded-lg"><option value="">-- Cash (Bearer) --</option>{users.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}</select>
+                                        <div className="relative"><span className="absolute left-3 top-3 text-slate-500">$</span><input type="number" step="0.01" value={mintAmount} onChange={e=>setMintAmount(e.target.value)} className="w-full bg-slate-950 border border-slate-600 text-white p-3 pl-8 rounded-lg font-mono text-lg" placeholder="0.00"/></div>
+                                        <button className="bg-green-600 hover:bg-green-500 text-white font-bold p-4 rounded-lg mt-2 shadow-lg">🖨️ PRINT MONEY</button>
+                                    </form>
+                                </div>
+                            </div>
+                        )}
                     </div>
                 </div>
             );
         }
+
         const root = ReactDOM.createRoot(document.getElementById('root'));
         root.render(<AdminApp />);
     </script>

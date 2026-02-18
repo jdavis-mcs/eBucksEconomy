@@ -3,133 +3,170 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>E-Bucks Timeclock</title>
+    <title>Time Clock</title>
     <script src="https://unpkg.com/react@18/umd/react.development.js" crossorigin></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js" crossorigin></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
-    <style>body { background-color: #0f172a; }</style>
+    <style>
+        body { background-color: #0f172a; }
+        .key-btn {
+            transition: all 0.1s;
+        }
+        .key-btn:active {
+            transform: scale(0.95);
+            background-color: #3b82f6;
+            border-color: #3b82f6;
+            color: white;
+        }
+    </style>
 </head>
-<body class="h-screen w-screen overflow-hidden flex flex-col">
+<body class="text-slate-300 h-screen w-screen overflow-hidden flex flex-col items-center justify-center">
 
-    <a href="/" class="fixed top-6 left-6 text-slate-500 hover:text-white text-xl z-50">🏠 Dashboard</a>
+    <button onclick="document.getElementById('app-drawer').classList.remove('-translate-x-full')" 
+        class="fixed top-4 left-4 z-50 bg-slate-800 text-white p-2 rounded-lg shadow-xl hover:bg-blue-600 transition-colors border border-slate-700">
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h16" /></svg>
+    </button>
 
-    <div id="root" class="flex-1 flex flex-col items-center justify-center"></div>
+    <div id="app-drawer" class="fixed inset-y-0 left-0 w-72 bg-slate-900 shadow-2xl z-[60] transform -translate-x-full transition-transform duration-300 ease-in-out border-r border-slate-800 flex flex-col">
+        <div class="p-4 border-b border-slate-800 flex justify-between items-center bg-slate-950">
+            <span class="font-black text-white tracking-tighter text-lg">E-BUCKS <span class="text-blue-500">HR</span></span>
+            <button onclick="document.getElementById('app-drawer').classList.add('-translate-x-full')" class="text-slate-400 hover:text-white"><svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg></button>
+        </div>
+        <div class="p-4 grid grid-cols-2 gap-3">
+            <a href="/" class="flex flex-col items-center justify-center bg-slate-800 hover:bg-slate-700 p-3 rounded-lg border border-slate-700 transition text-center group"><span class="text-2xl mb-1 group-hover:scale-110 transition-transform">🏠</span><span class="text-xs font-bold text-slate-300">Home</span></a>
+            <a href="store.html" class="flex flex-col items-center justify-center bg-slate-800 hover:bg-slate-700 p-3 rounded-lg border border-slate-700 transition text-center group"><span class="text-2xl mb-1 group-hover:scale-110 transition-transform">🛒</span><span class="text-xs font-bold text-slate-300">Store</span></a>
+            <a href="admin.html" class="flex flex-col items-center justify-center bg-slate-800 hover:bg-slate-700 p-3 rounded-lg border border-slate-700 transition text-center group"><span class="text-2xl mb-1 group-hover:scale-110 transition-transform">⚙️</span><span class="text-xs font-bold text-slate-300">Admin</span></a>
+        </div>
+    </div>
+
+    <div id="root" class="w-full max-w-md p-4"></div>
 
     <script type="text/babel">
-        const { useState } = React;
+        const { useState, useEffect } = React;
 
-        function Timeclock() {
+        function TimeClock() {
             const [pin, setPin] = useState("");
-            const [status, setStatus] = useState("IDLE"); // IDLE, LOADING, SUCCESS, ERROR
-            const [message, setMessage] = useState("");
-            const [userData, setUserData] = useState(null);
+            const [status, setStatus] = useState(null); // { type: 'success'|'error', msg: '', sub: '' }
+            const [loading, setLoading] = useState(false);
 
-            const handleNum = (num) => {
-                if(status === 'SUCCESS' || status === 'ERROR') reset();
-                if(pin.length < 4) setPin(prev => prev + num);
+            // Handle Keypad Press
+            const handlePress = (key) => {
+                if (status) setStatus(null); // Clear message on new input
+                if (key === 'CLEAR') {
+                    setPin("");
+                } else if (key === 'ENTER') {
+                    submitClock();
+                } else if (key === 'BACK') {
+                    setPin(prev => prev.slice(0, -1));
+                } else {
+                    if (pin.length < 6) {
+                        setPin(prev => prev + key);
+                    }
+                }
             };
 
-            const handleClear = () => setPin("");
-            
-            const reset = () => {
-                setStatus("IDLE");
-                setPin("");
-                setMessage("");
-                setUserData(null);
-            };
+            // Keyboard support
+            useEffect(() => {
+                const handleKeyDown = (e) => {
+                    if(e.key >= '0' && e.key <= '9') handlePress(e.key);
+                    if(e.key === 'Backspace') handlePress('BACK');
+                    if(e.key === 'Enter') handlePress('ENTER');
+                    if(e.key === 'Escape') handlePress('CLEAR');
+                };
+                window.addEventListener('keydown', handleKeyDown);
+                return () => window.removeEventListener('keydown', handleKeyDown);
+            }, [pin]);
 
-            const handleSubmit = async () => {
-                if(pin.length !== 4) return;
-                setStatus("LOADING");
-                
+            const submitClock = async () => {
+                if (!pin) return;
+                setLoading(true);
                 try {
                     const res = await fetch('/api/clock', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ pin })
+                        // Explicitly sending PIN as a string (e.g. "001234")
+                        body: JSON.stringify({ pin: pin }) 
                     });
                     const data = await res.json();
-
-                    if(data.success) {
-                        setStatus("SUCCESS");
-                        setUserData(data);
-                        // Auto reset after 3 seconds
-                        setTimeout(reset, 3000);
+                    
+                    if (data.success) {
+                        // Success Logic
+                        const isOut = data.action === 'OUT';
+                        setStatus({
+                            type: 'success',
+                            msg: isOut ? 'Goodbye, ' + data.user : 'Welcome, ' + data.user,
+                            sub: isOut ? `Shift Complete: ${data.hours} Hours` : 'Clocked In Successfully'
+                        });
+                        setPin("");
+                        // Clear success message after 3 seconds
+                        setTimeout(() => setStatus(null), 5000);
                     } else {
-                        setStatus("ERROR");
-                        setMessage(data.error || "Invalid PIN");
-                        setTimeout(reset, 2000);
+                        setStatus({ type: 'error', msg: 'Invalid PIN', sub: 'Please try again.' });
+                        setPin("");
+                        setTimeout(() => setStatus(null), 3000);
                     }
                 } catch (e) {
-                    setStatus("ERROR");
-                    setMessage("Server Offline");
+                    setStatus({ type: 'error', msg: 'System Error', sub: 'Could not connect to server.' });
                 }
+                setLoading(false);
             };
 
+            // Calculate masked PIN (show dots)
+            const maskedPin = "•".repeat(pin.length) + "_".repeat(Math.max(0, 6 - pin.length));
+
             return (
-                <div class="flex flex-col items-center">
+                <div className="bg-slate-900 border border-slate-700 rounded-3xl shadow-2xl overflow-hidden flex flex-col w-full relative">
                     
                     {/* DISPLAY SCREEN */}
-                    <div className="mb-8 w-96 text-center">
-                        {status === 'IDLE' && (
-                            <div>
-                                <h1 className="text-4xl font-black text-white mb-2 tracking-tight">TIMECLOCK</h1>
-                                <p className="text-slate-500">Enter your 4-digit PIN</p>
-                            </div>
-                        )}
-                        {status === 'LOADING' && <div className="text-blue-500 text-2xl animate-pulse font-mono">AUTHENTICATING...</div>}
+                    <div className="bg-slate-950 p-8 flex flex-col items-center justify-center border-b border-slate-800 min-h-[180px]">
+                        <h1 className="text-slate-500 font-bold tracking-widest uppercase text-sm mb-4">Employee Timeclock</h1>
                         
-                        {status === 'ERROR' && (
-                            <div className="animate-bounce">
-                                <div className="text-red-500 text-4xl font-black mb-2">❌ ERROR</div>
-                                <div className="text-slate-400">{message}</div>
+                        {!status && (
+                            <div className="font-mono text-5xl tracking-[0.5em] text-blue-500 h-16 flex items-center">
+                                {pin.length === 0 ? <span className="text-slate-700 opacity-50 text-2xl tracking-normal">ENTER PIN</span> : "•".repeat(pin.length)}
                             </div>
                         )}
 
-                        {status === 'SUCCESS' && userData && (
-                            <div className="bg-slate-800 p-6 rounded-2xl border border-green-500 shadow-[0_0_50px_rgba(34,197,94,0.2)]">
-                                <h2 className="text-3xl font-bold text-white mb-1">{userData.action === "IN" ? "👋 WELCOME" : "👋 GOODBYE"}</h2>
-                                <div className="text-xl text-blue-400 font-bold mb-4">{userData.user}</div>
-                                {userData.action === "OUT" && (
-                                    <div className="bg-slate-900 p-3 rounded border border-slate-700">
-                                        <div className="text-slate-500 text-xs uppercase tracking-widest">Session Duration</div>
-                                        <div className="text-3xl font-mono text-green-400">{userData.hours} <span className="text-sm">HRS</span></div>
-                                    </div>
-                                )}
-                                <div className="mt-4 text-slate-500 text-sm">Recorded: {new Date().toLocaleTimeString()}</div>
+                        {status && (
+                            <div className={`text-center animate-bounce ${status.type === 'error' ? 'text-red-500' : 'text-green-500'}`}>
+                                <div className="text-3xl font-black mb-1">{status.msg}</div>
+                                <div className="text-sm font-bold opacity-80 uppercase tracking-wide">{status.sub}</div>
                             </div>
                         )}
                     </div>
 
-                    {/* PIN DOTS */}
-                    {status === 'IDLE' && (
-                        <div className="flex gap-4 mb-8">
-                            {[0,1,2,3].map(i => (
-                                <div key={i} className={`w-4 h-4 rounded-full transition-all duration-300 ${i < pin.length ? 'bg-blue-500 scale-125 shadow-[0_0_10px_#3b82f6]' : 'bg-slate-800'}`}></div>
-                            ))}
-                        </div>
-                    )}
+                    {/* KEYPAD */}
+                    <div className="p-6 bg-slate-800 grid grid-cols-3 gap-4">
+                        {[1, 2, 3, 4, 5, 6, 7, 8, 9].map(num => (
+                            <button key={num} onClick={() => handlePress(String(num))} 
+                                className="key-btn aspect-square rounded-2xl bg-slate-700 border-b-4 border-slate-950 text-white font-black text-3xl shadow-lg flex items-center justify-center hover:bg-slate-600">
+                                {num}
+                            </button>
+                        ))}
+                        
+                        <button onClick={() => handlePress('CLEAR')} className="key-btn aspect-square rounded-2xl bg-red-900/50 border-b-4 border-slate-950 text-red-200 font-bold text-lg shadow-lg flex items-center justify-center hover:bg-red-900">
+                            CLR
+                        </button>
+                        
+                        <button onClick={() => handlePress('0')} className="key-btn aspect-square rounded-2xl bg-slate-700 border-b-4 border-slate-950 text-white font-black text-3xl shadow-lg flex items-center justify-center hover:bg-slate-600">
+                            0
+                        </button>
 
-                    {/* NUMPAD */}
-                    {status === 'IDLE' && (
-                        <div className="grid grid-cols-3 gap-4 w-80">
-                            {[1,2,3,4,5,6,7,8,9].map(num => (
-                                <button key={num} onClick={() => handleNum(num)} className="h-20 bg-slate-800 hover:bg-slate-700 active:scale-95 text-white text-2xl font-bold rounded-xl border border-slate-700 shadow-lg transition-all">
-                                    {num}
-                                </button>
-                            ))}
-                            <button onClick={handleClear} className="h-20 bg-red-900/20 hover:bg-red-900/40 text-red-500 font-bold rounded-xl border border-red-900/50">CLR</button>
-                            <button onClick={() => handleNum(0)} className="h-20 bg-slate-800 hover:bg-slate-700 text-white text-2xl font-bold rounded-xl border border-slate-700">0</button>
-                            <button onClick={handleSubmit} className="h-20 bg-blue-600 hover:bg-blue-500 text-white text-2xl font-bold rounded-xl shadow-[0_0_20px_rgba(37,99,235,0.3)]">➜</button>
-                        </div>
-                    )}
+                        <button onClick={() => handlePress('ENTER')} disabled={loading} className={`key-btn aspect-square rounded-2xl border-b-4 border-slate-950 text-white font-black text-lg shadow-lg flex items-center justify-center ${loading ? 'bg-slate-600' : 'bg-green-600 hover:bg-green-500'}`}>
+                            {loading ? '...' : 'GO'}
+                        </button>
+                    </div>
+
+                    <div className="bg-slate-800 p-2 text-center text-slate-500 text-xs">
+                        Current Time: {new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+                    </div>
                 </div>
             );
         }
 
         const root = ReactDOM.createRoot(document.getElementById('root'));
-        root.render(<Timeclock />);
+        root.render(<TimeClock />);
     </script>
 </body>
 </html>

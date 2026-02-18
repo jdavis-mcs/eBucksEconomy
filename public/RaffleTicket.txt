@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Student Raffle Kiosk</title>
+    <style>
+        /* General Styling for Kiosk Mode */
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #f0f2f5;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+        }
+
+        .kiosk-container {
+            background: white;
+            padding: 2rem;
+            border-radius: 12px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+            width: 100%;
+            max-width: 400px;
+            text-align: center;
+        }
+
+        input, select {
+            width: 100%;
+            padding: 12px;
+            margin: 10px 0;
+            border: 1px solid #ccc;
+            border-radius: 6px;
+            box-sizing: border-box;
+            font-size: 16px;
+        }
+
+        button {
+            background-color: #007bff;
+            color: white;
+            border: none;
+            padding: 15px 20px;
+            border-radius: 6px;
+            cursor: pointer;
+            width: 100%;
+            font-size: 18px;
+            font-weight: bold;
+        }
+
+        button:hover {
+            background-color: #0056b3;
+        }
+
+        /* Print-Specific Styles */
+        #print-area {
+            display: none;
+        }
+
+        @media print {
+            body * {
+                visibility: hidden;
+            }
+            #print-area, #print-area * {
+                visibility: visible;
+            }
+            #print-area {
+                display: block;
+                position: absolute;
+                left: 0;
+                top: 0;
+                width: 100%;
+            }
+            .ticket {
+                border-bottom: 2px dashed #000;
+                padding: 20px 0;
+                text-align: center;
+                page-break-inside: avoid;
+            }
+            .ticket:last-child {
+                border-bottom: none;
+            }
+            h2, p {
+                margin: 5px 0;
+            }
+        }
+    </style>
+</head>
+<body>
+
+<div class="kiosk-container">
+    <h1>🎟️ Raffle Entry</h1>
+    <form id="raffleForm">
+        <input type="text" id="studentName" placeholder="Full Name" required>
+        <input type="number" id="studentGrade" placeholder="Grade (e.g. 9)" required>
+        <button type="submit">Print Tickets</button>
+    </form>
+</div>
+
+<div id="print-area"></div>
+
+<script>
+    let ticketCount = 1001; // Starting ticket number
+
+    document.getElementById('raffleForm').addEventListener('submit', function(e) {
+        e.preventDefault();
+
+        const name = document.getElementById('studentName').value;
+        const grade = document.getElementById('studentGrade').value;
+        const now = new Date().toLocaleString();
+        
+        const printArea = document.getElementById('print-area');
+        
+        // Generate the HTML for two copies
+        const ticketHTML = `
+            <div class="ticket">
+                <h2>RAFFLE TICKET</h2>
+                <p><strong>No: #${ticketCount}</strong></p>
+                <p>Name: ${name}</p>
+                <p>Grade: ${grade}</p>
+                <p><small>${now}</small></p>
+                <p style="margin-top:10px;">(STUDENT COPY)</p>
+            </div>
+            <div class="ticket">
+                <h2>RAFFLE TICKET</h2>
+                <p><strong>No: #${ticketCount}</strong></p>
+                <p>Name: ${name}</p>
+                <p>Grade: ${grade}</p>
+                <p><small>${now}</small></p>
+                <p style="margin-top:10px;">(BIN COPY)</p>
+            </div>
+        `;
+
+        printArea.innerHTML = ticketHTML;
+
+        // Trigger the print dialogue
+        window.print();
+
+        // Increment ticket and reset form
+        ticketCount++;
+        this.reset();
+    });
+</script>
+
+</body>
+</html>

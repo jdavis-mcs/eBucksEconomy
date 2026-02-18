@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Villager Trading</title>
+    <link rel="stylesheet" href="villager.css">
+</head>
+<body>
+
+    <div class="mc-container">
+        <div class="gui-header">
+            <span>Trade</span>
+        </div>
+        
+        <div class="gui-body">
+            <div class="trade-list-container">
+                <ul id="tradeList" class="trade-list">
+                    </ul>
+            </div>
+
+            <div class="selection-panel">
+                <div class="slot-group">
+                    <div class="slot input-slot">
+                        <div class="item-icon emerald"></div>
+                        <span id="totalCostDisplay">0</span>
+                    </div>
+                    
+                    <div class="arrow-indicator">→</div>
+
+                    <div class="slot output-slot" id="cartPreview">
+                        </div>
+                </div>
+
+                <div class="voucher-section">
+                    <label>SCAN EMERALD (VOUCHER):</label>
+                    <input type="text" id="voucherInput" class="mc-input" placeholder="Scan Voucher..." autofocus>
+                </div>
+
+                <button id="tradeButton" class="mc-button" disabled>Trade!</button>
+            </div>
+        </div>
+    </div>
+
+    <audio id="villagerSound" src="https://www.myinstants.com/media/sounds/villager-hmm.mp3"></audio>
+
+    <script src="villager.js"></script>
+</body>
+</html>

@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Student Raffle Kiosk</title>
+    <style>
+        body {
+            font-family: system-ui, -apple-system, sans-serif;
+            background-color: #f4f7f6;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+        }
+
+        .kiosk-container {
+            background: white;
+            padding: 2.5rem;
+            border-radius: 15px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.1);
+            width: 100%;
+            max-width: 450px;
+            text-align: center;
+        }
+
+        .stats {
+            margin-top: 20px;
+            font-size: 0.9rem;
+            color: #7f8c8d;
+            font-weight: bold;
+        }
+
+        input {
+            width: 100%;
+            padding: 15px;
+            margin: 10px 0;
+            border: 2px solid #dfe6e9;
+            border-radius: 8px;
+            box-sizing: border-box;
+            font-size: 18px;
+        }
+
+        button {
+            background-color: #27ae60;
+            color: white;
+            border: none;
+            padding: 18px;
+            border-radius: 8px;
+            cursor: pointer;
+            width: 100%;
+            font-size: 20px;
+            font-weight: bold;
+        }
+
+        /* Print Area */
+        #print-area { display: none; }
+
+        @media print {
+            @page { margin: 0; }
+            body * { visibility: hidden; }
+            #print-area, #print-area * { visibility: visible; }
+            #print-area {
+                display: block;
+                position: absolute;
+                left: 0;
+                top: 0;
+                width: 100%;
+                text-align: center;
+            }
+            .ticket { padding: 10px; border: none; }
+            h2 { font-size: 20pt; margin: 5px 0; }
+            p { font-size: 12pt; margin: 3px 0; }
+        }
+    </style>
+</head>
+<body>
+
+<div class="kiosk-container">
+    <h1>🎟️ Student Raffle</h1>
+    <form id="raffleForm">
+        <input type="text" id="studentName" placeholder="Enter Full Name" required>
+        <input type="number" id="studentGrade" placeholder="Enter Grade" required>
+        <button type="submit" id="submitBtn">GENERATE TICKETS</button>
+    </form>
+    
+    <div class="stats">
+        Total Entries So Far: <span id="totalCount">0</span>
+    </div>
+</div>
+
+<div id="print-area"></div>
+
+<script>
+    let ticketNumber = 1001;
+    let totalEntries = 0;
+
+    const form = document.getElementById('raffleForm');
+    const printArea = document.getElementById('print-area');
+    const totalDisplay = document.getElementById('totalCount');
+
+    form.addEventListener('submit', async function(e) {
+        e.preventDefault();
+        
+        const name = document.getElementById('studentName').value;
+        const grade = document.getElementById('studentGrade').value;
+        const timestamp = new Date().toLocaleString();
+
+        // Disable button briefly to prevent double-taps
+        const btn = document.getElementById('submitBtn');
+        btn.disabled = true;
+        btn.innerText = "PRINTING...";
+
+        // 1. Print Ticket for the BIN
+        await printTicket(name, grade, timestamp, "OFFICE BIN COPY");
+
+        // Update Stats
+        totalEntries++;
+        totalDisplay.innerText = totalEntries;
+        ticketNumber++;
+
+        // Reset UI
+        btn.disabled = false;
+        btn.innerText = "GENERATE TICKETS";
+        form.reset();
+        document.getElementById('studentName').focus();
+    });
+</script>
+
+</body>
+</html>

@@ -1,0 +1,147 @@
+@import url('https://fonts.googleapis.com/css2?family=VT323&display=swap');
+
+:root {
+    --mc-grey: #C6C6C6;
+    --mc-dark-grey: #8B8B8B;
+    --mc-shadow: #373737;
+    --mc-highlight: #FFF;
+}
+
+body {
+    background-color: #1e1e1e;
+    font-family: 'VT323', monospace;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 100vh;
+    margin: 0;
+    user-select: none;
+}
+
+.mc-container {
+    background-color: var(--mc-grey);
+    border: 4px solid var(--mc-shadow);
+    border-top-color: var(--mc-highlight);
+    border-left-color: var(--mc-highlight);
+    width: 800px;
+    height: 500px;
+    position: relative;
+    box-shadow: 10px 10px 0 #000;
+}
+
+.gui-header {
+    padding: 10px;
+    color: #404040;
+    font-size: 24px;
+}
+
+.gui-body {
+    display: flex;
+    height: 85%;
+}
+
+/* Left Column: List of items */
+.trade-list-container {
+    width: 40%;
+    background-color: var(--mc-grey);
+    border-right: 2px solid var(--mc-shadow);
+    overflow-y: auto;
+    padding: 5px;
+}
+
+.trade-item {
+    display: flex;
+    align-items: center;
+    padding: 10px;
+    cursor: pointer;
+    border: 2px solid transparent;
+}
+
+.trade-item:hover, .trade-item.active {
+    background-color: #DADADA;
+    border: 2px solid #000;
+}
+
+.trade-cost {
+    display: flex;
+    align-items: center;
+    margin-right: 10px;
+}
+
+.emerald-icon {
+    width: 20px;
+    height: 20px;
+    background-color: #00AA00; /* Placeholder for emerald graphic */
+    border: 2px solid #005500;
+    margin-right: 5px;
+    display: inline-block;
+}
+
+/* Right Column: Checkout */
+.selection-panel {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+}
+
+.slot-group {
+    display: flex;
+    align-items: center;
+    margin-bottom: 40px;
+}
+
+.slot {
+    width: 64px;
+    height: 64px;
+    background-color: #8B8B8B;
+    border: 2px solid #FFF;
+    border-top-color: #373737;
+    border-left-color: #373737;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    font-size: 24px;
+    position: relative;
+}
+
+.arrow-indicator {
+    font-size: 40px;
+    margin: 0 20px;
+    color: #404040;
+}
+
+.mc-input {
+    background: #000;
+    color: #FFF;
+    border: 2px solid #A0A0A0;
+    font-family: 'VT323', monospace;
+    font-size: 20px;
+    padding: 5px;
+    width: 200px;
+    text-align: center;
+}
+
+.mc-button {
+    margin-top: 20px;
+    background-color: var(--mc-grey);
+    border: 2px solid #000;
+    border-top-color: #FFF;
+    border-left-color: #FFF;
+    padding: 10px 30px;
+    font-family: 'VT323', monospace;
+    font-size: 24px;
+    cursor: pointer;
+}
+
+.mc-button:active {
+    border: 2px solid #000;
+    border-bottom-color: #FFF;
+    border-right-color: #FFF;
+}
+
+.mc-button:disabled {
+    color: #888;
+    cursor: not-allowed;
+}
